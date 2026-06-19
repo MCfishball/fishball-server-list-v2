@@ -24,6 +24,7 @@ import {
   X,
 } from "lucide-react";
 import { FormEvent, useDeferredValue, useEffect, useMemo, useState } from "react";
+import type { Session } from "@supabase/supabase-js";
 import { Category, Post } from "./data";
 import {
   createComment,
@@ -36,6 +37,7 @@ import {
   setPostLike,
   subscribeToForumChanges,
 } from "./lib/forum-api";
+import { getCurrentSession, onAuthSessionChange } from "./lib/supabase";
 
 const categories: { label: Category; icon: typeof Home }[] = [
   { label: "全部讨论", icon: MessageSquare },
@@ -61,7 +63,45 @@ export function App() {
   const [composerOpen, setComposerOpen] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [toast, setToast] = useState("");
+  const [session, setSession] = useState<Session | null>(null);
+  const [authReady, setAuthReady] = useState(false);
   const deferredQuery = useDeferredValue(query.trim().toLowerCase());
+
+  useEffect(() => {
+    let active = true;
+
+    void getCurrentSession()
+      .then((currentSession) => {
+        if (active) setSession(currentSession);
+      })
+      .catch(() => {
+        if (active) setSession(null);
+      })
+      .finally(() => {
+        if (active) setAuthReady(true);
+      });
+
+    const unsubscribe = onAuthSessionChange((nextSession) => {
+      setSession(nextSession);
+      setAuthReady(true);
+    });
+
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!session?.user.id) {
+      setLiked(new Set());
+      return;
+    }
+
+    void listCurrentUserLikes()
+      .then(setLiked)
+      .catch(() => setLiked(new Set()));
+  }, [session?.user.id]);
 
   useEffect(() => {
     let active = true;
@@ -154,6 +194,8 @@ export function App() {
         onQuery={setQuery}
         mobileNavOpen={mobileNavOpen}
         onToggleMobileNav={() => setMobileNavOpen((value) => !value)}
+        session={session}
+        authReady={authReady}
       />
 
       <main className="layout">
@@ -163,7 +205,13 @@ export function App() {
             setActiveCategory(category);
             setMobileNavOpen(false);
           }}
-          onCompose={() => setComposerOpen(true)}
+          onCompose={() => {
+            if (!session) {
+              showToast("请先在 V1 登录，再通过主站“论坛”入口进入");
+              return;
+            }
+            setComposerOpen(true);
+          }}
           mobileNavOpen={mobileNavOpen}
         />
 
@@ -248,6 +296,7 @@ export function App() {
           onLike={() => toggleLike(selectedPost.id)}
           onClose={() => setSelectedPost(null)}
           onPromote={() => promotePost(selectedPost.id)}
+          canInteract={Boolean(session)}
         />
       ) : null}
       {toast ? <div className="toast">{toast}</div> : null}
@@ -260,12 +309,18 @@ function Header({
   onQuery,
   mobileNavOpen,
   onToggleMobileNav,
+  session,
+  authReady,
 }: {
   query: string;
   onQuery: (value: string) => void;
   mobileNavOpen: boolean;
   onToggleMobileNav: () => void;
+  session: Session | null;
+  authReady: boolean;
 }) {
+  const accountName = session?.user.email?.split("@")[0] ?? "社区账户";
+
   return (
     <header className="header">
       <button
@@ -310,8 +365,8 @@ function Header({
       <button className="profile">
         <span className="avatar">🧑</span>
         <span className="profile-copy">
-          <strong>社区账户</strong>
-          <span>登录后可参与讨论</span>
+          <strong>{accountName}</strong>
+          <span>{authReady ? (session ? "已登录 · 可参与讨论" : "请先登录") : "正在恢复登录状态…"}</span>
         </span>
         <ChevronDown size={15} />
       </button>
@@ -563,12 +618,14 @@ function PostDialog({
   onLike,
   onClose,
   onPromote,
+  canInteract,
 }: {
   post: Post;
   isLiked: boolean;
   onLike: () => void;
   onClose: () => void;
   onPromote: () => void;
+  canInteract: boolean;
 }) {
   const [comments, setComments] = useState<ForumComment[]>([]);
   const [comment, setComment] = useState("");
@@ -610,12 +667,15 @@ function PostDialog({
           <span className="post-avatar">{post.avatar}</span>
           <div>
             <strong>{post.author}</strong>
-            <span>LV.18 · 社区成员</span>
           </div>
         </div>
         <p className="dialog-content">{post.content}</p>
         <div className="dialog-actions">
-          <button className={isLiked ? "secondary-button liked" : "secondary-button"} onClick={onLike}>
+          <button
+            className={isLiked ? "secondary-button liked" : "secondary-button"}
+            onClick={onLike}
+            disabled={!canInteract}
+          >
             <ThumbsUp size={16} fill={isLiked ? "currentColor" : "none"} />
             {isLiked ? "已点赞" : "点赞"} · {post.likes}
           </button>
@@ -639,10 +699,11 @@ function PostDialog({
             <input
               value={comment}
               onChange={(e) => setComment(e.target.value)}
-              placeholder="友善地参与讨论…"
+              placeholder={canInteract ? "友善地参与讨论…" : "请先在 V1 登录"}
               aria-label="发表评论"
+              disabled={!canInteract}
             />
-            <button disabled={!comment.trim()} aria-label="发送评论">
+            <button disabled={!canInteract || !comment.trim()} aria-label="发送评论">
               <Send size={17} />
             </button>
           </form>

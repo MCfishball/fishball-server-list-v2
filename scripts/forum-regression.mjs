@@ -8,6 +8,7 @@ const cleanup = readFileSync(
   "supabase/migrations/202606190005_remove_fake_forum_data.sql",
   "utf8",
 );
+const auth = readFileSync("src/lib/supabase.ts", "utf8");
 
 assert.doesNotMatch(app, /initialPosts|demo-comment|isSupabaseConfigured\s*\?/);
 assert.doesNotMatch(data, /demo-post|initialPosts/);
@@ -19,5 +20,9 @@ assert.match(api, /requireUserId\(\)/);
 assert.match(api, /postgres_changes/);
 assert.match(cleanup, /delete from public\.posts/i);
 assert.match(cleanup, /supabase_realtime/);
+assert.match(auth, /supabase\.auth\.getSession\(\)/);
+assert.match(auth, /supabase\.auth\.onAuthStateChange/);
+assert.match(auth, /persistSession: true/);
+assert.doesNotMatch(app, /isLoggedIn|mock user|localStorage.*user/i);
 
 console.log("Forum regression checks passed");

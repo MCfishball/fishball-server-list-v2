@@ -35,14 +35,14 @@ function databaseAuthor(userId: string) {
   return `玩家${userId.replaceAll("-", "").slice(0, 4)}`;
 }
 
-function toPost(row: DatabasePost, comments: number, likes: number): Post {
+function toPost(row: DatabasePost, comments: number, likes: number, author?: string): Post {
   return {
     id: row.id,
     title: row.title,
     content: row.content,
     category: categoryFromDb[row.category],
     tag: "社区",
-    author: databaseAuthor(row.user_id),
+    author: author || databaseAuthor(row.user_id),
     age: new Intl.DateTimeFormat("zh-CN", {
       month: "numeric",
       day: "numeric",
@@ -72,17 +72,28 @@ export async function listPosts(): Promise<Post[]> {
   if (!posts.length) return [];
 
   const postIds = posts.map((post) => post.id);
-  const [{ data: commentRows, error: commentError }, { data: likeRows, error: likeError }] =
-    await Promise.all([
+  const [
+    { data: commentRows, error: commentError },
+    { data: likeRows, error: likeError },
+    { data: profileRows, error: profileError },
+  ] = await Promise.all([
       supabase.from("comments").select("post_id").in("post_id", postIds),
       supabase.from("post_likes").select("post_id").in("post_id", postIds),
+      supabase
+        .from("profiles")
+        .select("user_id,nickname")
+        .in("user_id", [...new Set(posts.map((post) => post.user_id))]),
     ]);
 
   if (commentError) throw commentError;
   if (likeError) throw likeError;
+  if (profileError) throw profileError;
 
   const commentCounts = new Map<string, number>();
   const likeCounts = new Map<string, number>();
+  const authors = new Map(
+    (profileRows ?? []).map((profile) => [profile.user_id, profile.nickname as string | null]),
+  );
   for (const row of commentRows ?? []) {
     commentCounts.set(row.post_id, (commentCounts.get(row.post_id) ?? 0) + 1);
   }
@@ -91,7 +102,12 @@ export async function listPosts(): Promise<Post[]> {
   }
 
   return posts.map((post) =>
-    toPost(post, commentCounts.get(post.id) ?? 0, likeCounts.get(post.id) ?? 0),
+    toPost(
+      post,
+      commentCounts.get(post.id) ?? 0,
+      likeCounts.get(post.id) ?? 0,
+      authors.get(post.user_id) ?? undefined,
+    ),
   );
 }
 
@@ -173,9 +189,20 @@ export async function listComments(postId: string): Promise<ForumComment[]> {
     .order("created_at", { ascending: true });
 
   if (error) throw error;
-  return (data as DatabaseComment[]).map((row) => ({
+  const comments = data as DatabaseComment[];
+  if (!comments.length) return [];
+  const { data: profileRows, error: profileError } = await supabase
+    .from("profiles")
+    .select("user_id,nickname")
+    .in("user_id", [...new Set(comments.map((comment) => comment.user_id))]);
+  if (profileError) throw profileError;
+  const authors = new Map(
+    (profileRows ?? []).map((profile) => [profile.user_id, profile.nickname as string | null]),
+  );
+
+  return comments.map((row) => ({
     id: row.id,
-    author: databaseAuthor(row.user_id),
+    author: authors.get(row.user_id) || databaseAuthor(row.user_id),
     body: row.content,
     age: new Intl.DateTimeFormat("zh-CN", {
       month: "numeric",
