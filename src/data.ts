@@ -1,7 +1,7 @@
 export type Category = "全部讨论" | "服务器讨论" | "求助" | "闲聊";
 
 export type Post = {
-  id: number;
+  id: string;
   title: string;
   author: string;
   category: Exclude<Category, "全部讨论">;
@@ -18,7 +18,7 @@ export type Post = {
 
 export const initialPosts: Post[] = [
   {
-    id: 1,
+    id: "demo-post-1",
     title: "FishBall V2 更新公告：全新论坛体验与反作弊系统升级",
     author: "FishBall_官方",
     category: "服务器讨论",
@@ -34,7 +34,7 @@ export const initialPosts: Post[] = [
       "欢迎来到 FishBall V2。我们重新设计了社区讨论体验，并为服务器主和玩家带来了更透明的审核机制。请在评论区留下你的建议。",
   },
   {
-    id: 2,
+    id: "demo-post-2",
     title: "【生存】四季生存服 1.20.4 招募长期玩家",
     author: "WindPlayer",
     category: "服务器讨论",
@@ -47,7 +47,7 @@ export const initialPosts: Post[] = [
       "一个专注长期建设的原版生存社区。我们有稳定的存档、友好的玩家和每周社区活动，欢迎建筑党和红石玩家。",
   },
   {
-    id: 3,
+    id: "demo-post-3",
     title: "村民交易价格突然变高了怎么办？",
     author: "MC_小萌新",
     category: "求助",
@@ -60,7 +60,7 @@ export const initialPosts: Post[] = [
       "服务器里的村民交易突然涨价，没有打过村民。请问可能是什么机制导致的？有没有恢复价格的方法？",
   },
   {
-    id: 4,
+    id: "demo-post-4",
     title: "今天在主城广场遇到的暖心事 ❤️",
     author: "甜菜不甜",
     category: "闲聊",
@@ -73,7 +73,7 @@ export const initialPosts: Post[] = [
       "刚加入服务器时不熟悉规则，一位老玩家带我逛了主城，还送了全套工具。Minecraft 社区最珍贵的还是人与人之间的连接。",
   },
   {
-    id: 5,
+    id: "demo-post-5",
     title: "关于领地插件 WorldGuard 的使用问题",
     author: "Redstone_Tech",
     category: "服务器讨论",
@@ -86,7 +86,7 @@ export const initialPosts: Post[] = [
       "正在配置 WorldGuard，希望实现出生点保护但允许玩家使用按钮和压力板，有经验的服主能分享一下 flags 配置吗？",
   },
   {
-    id: 6,
+    id: "demo-post-6",
     title: "你们最喜欢的建筑风格是什么？",
     author: "建筑大佬",
     category: "闲聊",
@@ -99,7 +99,7 @@ export const initialPosts: Post[] = [
       "最近在研究中世纪与日式建筑，想看看大家平时最喜欢哪种建筑风格，也欢迎晒出自己的作品。",
   },
   {
-    id: 7,
+    id: "demo-post-7",
     title: "服务器一直连接超时，求大佬看看",
     author: "卡顿选手",
     category: "求助",
@@ -112,7 +112,7 @@ export const initialPosts: Post[] = [
       "从昨天开始连接服务器一直超时，其他网站和游戏正常，已经重启过路由器和客户端。",
   },
   {
-    id: 8,
+    id: "demo-post-8",
     title: "史莱姆区块位置分享（1.20.4 实测可用）",
     author: "SlimeFinder",
     category: "服务器讨论",

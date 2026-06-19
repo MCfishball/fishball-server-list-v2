@@ -32,7 +32,7 @@ as $$
 begin
   new.user_id := auth.uid();
   new.status := 'pending';
-  new.priority := case when public.is_vip() then 'vip_high' else 'normal' end;
+  new.priority := case when public.fishball_v2_is_vip() then 'vip_high' else 'normal' end;
   new.resolved_at := null;
   new.resolved_by := null;
   return new;
@@ -79,7 +79,7 @@ alter table public.feedbacks enable row level security;
 drop policy if exists "users read own feedback and admins read all" on public.feedbacks;
 create policy "users read own feedback and admins read all"
 on public.feedbacks for select to authenticated
-using (user_id = (select auth.uid()) or (select public.is_admin()));
+using (user_id = (select auth.uid()) or (select public.fishball_v2_is_admin()));
 
 drop policy if exists "authenticated users create feedback" on public.feedbacks;
 create policy "authenticated users create feedback"
@@ -89,8 +89,8 @@ with check (user_id = (select auth.uid()));
 drop policy if exists "admins update feedback" on public.feedbacks;
 create policy "admins update feedback"
 on public.feedbacks for update to authenticated
-using ((select public.is_admin()))
-with check ((select public.is_admin()));
+using ((select public.fishball_v2_is_admin()))
+with check ((select public.fishball_v2_is_admin()));
 
 create or replace function public.resolve_feedback(target_feedback_id uuid)
 returns public.feedbacks
@@ -101,7 +101,7 @@ as $$
 declare
   result public.feedbacks;
 begin
-  if auth.uid() is null or not public.is_admin() then
+  if auth.uid() is null or not public.fishball_v2_is_admin() then
     raise exception 'admin role required';
   end if;
 

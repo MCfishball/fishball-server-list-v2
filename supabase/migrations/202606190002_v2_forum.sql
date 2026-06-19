@@ -37,7 +37,7 @@ create index if not exists comments_post_created_idx
 create index if not exists comments_user_id_idx on public.comments (user_id);
 create index if not exists post_likes_user_id_idx on public.post_likes (user_id);
 
-create or replace function public.set_row_updated_at()
+create or replace function public.fishball_v2_set_row_updated_at()
 returns trigger
 language plpgsql
 security invoker
@@ -52,12 +52,12 @@ $$;
 drop trigger if exists posts_set_updated_at on public.posts;
 create trigger posts_set_updated_at
 before update on public.posts
-for each row execute function public.set_row_updated_at();
+for each row execute function public.fishball_v2_set_row_updated_at();
 
 drop trigger if exists comments_set_updated_at on public.comments;
 create trigger comments_set_updated_at
 before update on public.comments
-for each row execute function public.set_row_updated_at();
+for each row execute function public.fishball_v2_set_row_updated_at();
 
 create or replace function public.protect_comment_fields()
 returns trigger
@@ -94,7 +94,7 @@ begin
   end if;
 
   if (new.is_pinned <> old.is_pinned or new.is_highlighted <> old.is_highlighted)
-     and not (public.is_vip() or public.is_admin()) then
+     and not (public.fishball_v2_is_vip() or public.fishball_v2_is_admin()) then
     raise exception 'VIP or admin role required for post promotion';
   end if;
 
@@ -128,13 +128,13 @@ with check (
 drop policy if exists "owners or admins update posts" on public.posts;
 create policy "owners or admins update posts"
 on public.posts for update to authenticated
-using (user_id = (select auth.uid()) or (select public.is_admin()))
-with check (user_id = (select auth.uid()) or (select public.is_admin()));
+using (user_id = (select auth.uid()) or (select public.fishball_v2_is_admin()))
+with check (user_id = (select auth.uid()) or (select public.fishball_v2_is_admin()));
 
 drop policy if exists "owners or admins delete posts" on public.posts;
 create policy "owners or admins delete posts"
 on public.posts for delete to authenticated
-using (user_id = (select auth.uid()) or (select public.is_admin()));
+using (user_id = (select auth.uid()) or (select public.fishball_v2_is_admin()));
 
 drop policy if exists "comments readable by everyone" on public.comments;
 create policy "comments readable by everyone"
@@ -149,13 +149,13 @@ with check (user_id = (select auth.uid()));
 drop policy if exists "owners or admins update comments" on public.comments;
 create policy "owners or admins update comments"
 on public.comments for update to authenticated
-using (user_id = (select auth.uid()) or (select public.is_admin()))
-with check (user_id = (select auth.uid()) or (select public.is_admin()));
+using (user_id = (select auth.uid()) or (select public.fishball_v2_is_admin()))
+with check (user_id = (select auth.uid()) or (select public.fishball_v2_is_admin()));
 
 drop policy if exists "owners or admins delete comments" on public.comments;
 create policy "owners or admins delete comments"
 on public.comments for delete to authenticated
-using (user_id = (select auth.uid()) or (select public.is_admin()));
+using (user_id = (select auth.uid()) or (select public.fishball_v2_is_admin()));
 
 drop policy if exists "likes readable by everyone" on public.post_likes;
 create policy "likes readable by everyone"
@@ -186,7 +186,7 @@ as $$
 declare
   result public.posts;
 begin
-  if auth.uid() is null or not (public.is_vip() or public.is_admin()) then
+  if auth.uid() is null or not (public.fishball_v2_is_vip() or public.fishball_v2_is_admin()) then
     raise exception 'VIP or admin role required';
   end if;
 

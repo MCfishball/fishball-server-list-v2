@@ -23,8 +23,17 @@ import {
   UsersRound,
   X,
 } from "lucide-react";
-import { FormEvent, useDeferredValue, useMemo, useState } from "react";
+import { FormEvent, useDeferredValue, useEffect, useMemo, useState } from "react";
 import { Category, initialPosts, Post, servers } from "./data";
+import {
+  createComment,
+  createPost as createDatabasePost,
+  ForumComment,
+  listComments,
+  listPosts,
+  setPostLike,
+} from "./lib/forum-api";
+import { isSupabaseConfigured } from "./lib/supabase";
 
 const categories: { label: Category; icon: typeof Home }[] = [
   { label: "全部讨论", icon: MessageSquare },
@@ -43,12 +52,21 @@ export function App() {
   const [activeCategory, setActiveCategory] = useState<Category>("全部讨论");
   const [query, setQuery] = useState("");
   const [posts, setPosts] = useState(initialPosts);
-  const [liked, setLiked] = useState<Set<number>>(() => new Set());
+  const [liked, setLiked] = useState<Set<string>>(() => new Set());
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [composerOpen, setComposerOpen] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [toast, setToast] = useState("");
   const deferredQuery = useDeferredValue(query.trim().toLowerCase());
+
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    void listPosts()
+      .then((databasePosts) => {
+        if (databasePosts.length) setPosts(databasePosts);
+      })
+      .catch(() => showToast("论坛数据加载失败，已保留当前内容"));
+  }, []);
 
   const visiblePosts = useMemo(() => {
     return posts.filter((post) => {
@@ -66,7 +84,17 @@ export function App() {
     window.setTimeout(() => setToast(""), 2400);
   };
 
-  const toggleLike = (postId: number) => {
+  const toggleLike = async (postId: string) => {
+    const willLike = !liked.has(postId);
+    if (isSupabaseConfigured) {
+      try {
+        await setPostLike(postId, willLike);
+      } catch (error) {
+        showToast(error instanceof Error ? error.message : "点赞失败");
+        return;
+      }
+    }
+
     setLiked((current) => {
       const next = new Set(current);
       next.has(postId) ? next.delete(postId) : next.add(postId);
@@ -74,11 +102,20 @@ export function App() {
     });
   };
 
-  const createPost = (post: Post) => {
-    setPosts((current) => [post, ...current]);
-    setComposerOpen(false);
-    setActiveCategory("全部讨论");
-    showToast("帖子已发布");
+  const createPost = async (post: Post) => {
+    try {
+      const savedPost = isSupabaseConfigured
+        ? await createDatabasePost(post)
+        : post;
+      setPosts((current) => [savedPost, ...current]);
+      setComposerOpen(false);
+      setActiveCategory("全部讨论");
+      showToast("帖子已发布");
+      return true;
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "发布失败");
+      return false;
+    }
   };
 
   return (
@@ -158,7 +195,7 @@ export function App() {
           </nav>
         </section>
 
-        <RightRail onFeedback={() => showToast("反馈入口已打开")} />
+        <RightRail onFeedback={() => window.location.assign("/feedback")} />
       </main>
 
       <Footer />
@@ -200,19 +237,22 @@ function Header({
       >
         {mobileNavOpen ? <X /> : <Menu />}
       </button>
-      <a className="brand" href="#" aria-label="FishBall 首页">
+      <a className="brand" href="/" aria-label="FishBall 首页">
         <span className="brand-cube">F</span>
         <strong>FishBall</strong>
         <span className="version">V2</span>
       </a>
+      <a className="v1-bridge-link" href="https://mcfishball.top">
+        ← 返回 V1 主站
+      </a>
       <nav className="main-nav" aria-label="主导航">
-        <a href="#">
+        <a href="/">
           <Server size={18} /> 服务器
         </a>
-        <a className="active" href="#">
+        <a className="active" href="/forum">
           <MessageSquare size={18} /> 论坛
         </a>
-        <a href="#">
+        <a href="/submit-server">
           <Plus size={18} /> 提交服务器
         </a>
       </nav>
@@ -418,17 +458,19 @@ function Composer({
   onCreate,
 }: {
   onClose: () => void;
-  onCreate: (post: Post) => void;
+  onCreate: (post: Post) => Promise<boolean>;
 }) {
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [category, setCategory] = useState<Post["category"]>("服务器讨论");
+  const [submitting, setSubmitting] = useState(false);
 
-  const submit = (event: FormEvent) => {
+  const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (title.trim().length < 3 || content.trim().length < 10) return;
-    onCreate({
-      id: Date.now(),
+    setSubmitting(true);
+    await onCreate({
+      id: crypto.randomUUID(),
       title: title.trim(),
       content: content.trim(),
       category,
@@ -439,6 +481,7 @@ function Composer({
       likes: 0,
       avatar: "🧑",
     });
+    setSubmitting(false);
   };
 
   return (
@@ -487,8 +530,15 @@ function Composer({
             <button type="button" className="secondary-button" onClick={onClose}>
               取消
             </button>
-            <button className="primary-button" disabled={title.trim().length < 3 || content.trim().length < 10}>
-              <Send size={16} /> 发布帖子
+            <button
+              className="primary-button"
+              disabled={
+                submitting ||
+                title.trim().length < 3 ||
+                content.trim().length < 10
+              }
+            >
+              <Send size={16} /> {submitting ? "发布中…" : "发布帖子"}
             </button>
           </div>
         </div>
@@ -510,19 +560,44 @@ function PostDialog({
   onClose: () => void;
   onPromote: () => void;
 }) {
-  const [comments, setComments] = useState([
-    { author: "方块旅人", body: "这个话题很有帮助，感谢分享！", age: "12 分钟前" },
-  ]);
+  const [comments, setComments] = useState<ForumComment[]>(
+    isSupabaseConfigured
+      ? []
+      : [{
+          id: "demo-comment",
+          author: "方块旅人",
+          body: "这个话题很有帮助，感谢分享！",
+          age: "12 分钟前",
+        }],
+  );
   const [comment, setComment] = useState("");
+  const [commentStatus, setCommentStatus] = useState("");
 
-  const submitComment = (event: FormEvent) => {
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    void listComments(post.id)
+      .then(setComments)
+      .catch(() => setCommentStatus("评论加载失败"));
+  }, [post.id]);
+
+  const submitComment = async (event: FormEvent) => {
     event.preventDefault();
     if (!comment.trim()) return;
-    setComments((current) => [
-      ...current,
-      { author: "FishBall_玩家", body: comment.trim(), age: "刚刚" },
-    ]);
-    setComment("");
+    setCommentStatus("");
+    try {
+      const savedComment = isSupabaseConfigured
+        ? await createComment(post.id, comment.trim())
+        : {
+            id: crypto.randomUUID(),
+            author: "FishBall_玩家",
+            body: comment.trim(),
+            age: "刚刚",
+          };
+      setComments((current) => [...current, savedComment]);
+      setComment("");
+    } catch (error) {
+      setCommentStatus(error instanceof Error ? error.message : "评论发布失败");
+    }
   };
 
   return (
@@ -578,6 +653,7 @@ function PostDialog({
               <Send size={17} />
             </button>
           </form>
+          {commentStatus ? <p className="form-status">{commentStatus}</p> : null}
         </div>
       </article>
     </div>
@@ -591,7 +667,7 @@ function Footer() {
       <nav>
         <a href="#">关于我们</a>
         <a href="#">帮助中心</a>
-        <a href="#">反馈建议</a>
+        <a href="/feedback">反馈建议</a>
         <a href="#">API</a>
         <a href="#">状态页面</a>
       </nav>

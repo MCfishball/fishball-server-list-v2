@@ -8,7 +8,7 @@
 --     app_metadata.is_vip = true
 --   Keep these claims synchronized with the existing FishBall VIP/admin source of truth.
 
-create or replace function public.is_admin()
+create or replace function public.fishball_v2_is_admin()
 returns boolean
 language sql
 stable
@@ -21,7 +21,7 @@ as $$
   );
 $$;
 
-create or replace function public.is_vip()
+create or replace function public.fishball_v2_is_vip()
 returns boolean
 language sql
 stable
@@ -34,8 +34,8 @@ as $$
   );
 $$;
 
-revoke all on function public.is_admin() from public;
-revoke all on function public.is_vip() from public;
-grant execute on function public.is_admin() to authenticated;
-grant execute on function public.is_vip() to authenticated;
+revoke all on function public.fishball_v2_is_admin() from public;
+revoke all on function public.fishball_v2_is_vip() from public;
+grant execute on function public.fishball_v2_is_admin() to authenticated;
+grant execute on function public.fishball_v2_is_vip() to authenticated;
 

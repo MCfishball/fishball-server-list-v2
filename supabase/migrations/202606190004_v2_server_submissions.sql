@@ -56,7 +56,7 @@ begin
       raise exception 'submission rate limit exceeded: maximum 3 per 24 hours';
     end if;
   else
-    if not public.is_admin() then
+    if not public.fishball_v2_is_admin() then
       raise exception 'only admins may update submissions';
     end if;
 
@@ -100,7 +100,7 @@ alter table public.server_submissions enable row level security;
 drop policy if exists "users read own submissions and admins read all" on public.server_submissions;
 create policy "users read own submissions and admins read all"
 on public.server_submissions for select to authenticated
-using (user_id = (select auth.uid()) or (select public.is_admin()));
+using (user_id = (select auth.uid()) or (select public.fishball_v2_is_admin()));
 
 drop policy if exists "authenticated users create submissions" on public.server_submissions;
 create policy "authenticated users create submissions"
@@ -110,8 +110,8 @@ with check (user_id = (select auth.uid()));
 drop policy if exists "admins update submissions" on public.server_submissions;
 create policy "admins update submissions"
 on public.server_submissions for update to authenticated
-using ((select public.is_admin()))
-with check ((select public.is_admin()));
+using ((select public.fishball_v2_is_admin()))
+with check ((select public.fishball_v2_is_admin()));
 
 create or replace function public.review_server_submission(
   target_submission_id uuid,
@@ -126,7 +126,7 @@ as $$
 declare
   result public.server_submissions;
 begin
-  if auth.uid() is null or not public.is_admin() then
+  if auth.uid() is null or not public.fishball_v2_is_admin() then
     raise exception 'admin role required';
   end if;
 
