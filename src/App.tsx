@@ -24,7 +24,7 @@ import {
   X,
 } from "lucide-react";
 import { FormEvent, useDeferredValue, useEffect, useMemo, useState } from "react";
-import { Category, Post, servers } from "./data";
+import { Category, Post } from "./data";
 import {
   createComment,
   createPost as createDatabasePost,
@@ -231,13 +231,6 @@ export function App() {
             )}
           </div>
 
-          <nav className="pagination" aria-label="分页">
-            <button className="active">1</button>
-            <button>2</button>
-            <button>3</button>
-            <button>4</button>
-            <button>下一页</button>
-          </nav>
         </section>
 
         <RightRail onFeedback={() => window.location.assign("/feedback")} />
@@ -442,25 +435,6 @@ function PostMetrics({
 function RightRail({ onFeedback }: { onFeedback: () => void }) {
   return (
     <aside className="right-rail">
-      <section className="rail-section">
-        <div className="rail-heading">
-          <h2>热门服务器</h2>
-          <button>查看全部</button>
-        </div>
-        <ol className="server-ranking">
-          {servers.map(([name, players, icon], index) => (
-            <li key={name}>
-              <span className={`rank rank-${index + 1}`}>{index + 1}</span>
-              <span className="server-icon">{icon}</span>
-              <span className="server-copy">
-                <strong>{name}</strong>
-                <span>{players}</span>
-              </span>
-              <span className="online-dot" title="在线" />
-            </li>
-          ))}
-        </ol>
-      </section>
       <section className="rail-section rules">
         <h2>社区公约</h2>
         <Rule icon={ShieldCheck} title="遵守法律法规" copy="不发布违法或危险内容。" />

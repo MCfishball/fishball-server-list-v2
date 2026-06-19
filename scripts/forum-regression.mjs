@@ -11,6 +11,7 @@ const cleanup = readFileSync(
 
 assert.doesNotMatch(app, /initialPosts|demo-comment|isSupabaseConfigured\s*\?/);
 assert.doesNotMatch(data, /demo-post|initialPosts/);
+assert.doesNotMatch(data, /像素王国|方块大陆|热门服务器/);
 assert.match(api, /\.from\("posts"\)\s*\.select\("\*"\)/s);
 assert.match(api, /\.from\("comments"\)/);
 assert.match(api, /\.from\("post_likes"\)/);
