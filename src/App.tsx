@@ -330,13 +330,13 @@ function Header({
       >
         {mobileNavOpen ? <X /> : <Menu />}
       </button>
-      <a className="brand" href="/" aria-label="FishBall 首页">
+      <a className="brand" href="/" aria-label="Minecraft 论坛首页">
         <span className="brand-cube">F</span>
-        <strong>FishBall</strong>
+        <strong>Minecraft 论坛</strong>
         <span className="version">V2</span>
       </a>
       <a className="v1-bridge-link" href="https://mcfishball.top">
-        ← 返回 V1 主站
+        返回首页
       </a>
       <nav className="main-nav" aria-label="主导航">
         <a href="/">
@@ -717,7 +717,7 @@ function PostDialog({
 function Footer() {
   return (
     <footer>
-      <span>© 2026 FishBall Community</span>
+      <span>© 2026 Minecraft 论坛</span>
       <nav>
         <a href="#">关于我们</a>
         <a href="#">帮助中心</a>

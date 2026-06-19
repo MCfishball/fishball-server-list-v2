@@ -11,9 +11,9 @@ export function ModuleShell({
   return (
     <div className="module-page">
       <header className="module-header">
-        <a className="brand" href="/" aria-label="FishBall 首页">
+        <a className="brand" href="/" aria-label="Minecraft 论坛首页">
           <span className="brand-cube">F</span>
-          <strong>FishBall</strong>
+          <strong>Minecraft 论坛</strong>
           <span className="version">V2</span>
         </a>
         <nav aria-label="V2 模块导航">
@@ -28,7 +28,7 @@ export function ModuleShell({
           </a>
         </nav>
         <a className="back-to-v1" href="https://mcfishball.top">
-          <Server size={16} /> ← 返回 V1 主站
+          <Server size={16} /> 返回首页
         </a>
       </header>
       {children}
