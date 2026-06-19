@@ -24,16 +24,18 @@ import {
   X,
 } from "lucide-react";
 import { FormEvent, useDeferredValue, useEffect, useMemo, useState } from "react";
-import { Category, initialPosts, Post, servers } from "./data";
+import { Category, Post, servers } from "./data";
 import {
   createComment,
   createPost as createDatabasePost,
   ForumComment,
+  highlightPost,
   listComments,
+  listCurrentUserLikes,
   listPosts,
   setPostLike,
+  subscribeToForumChanges,
 } from "./lib/forum-api";
-import { isSupabaseConfigured } from "./lib/supabase";
 
 const categories: { label: Category; icon: typeof Home }[] = [
   { label: "全部讨论", icon: MessageSquare },
@@ -51,8 +53,10 @@ const categoryClass: Record<Post["category"], string> = {
 export function App() {
   const [activeCategory, setActiveCategory] = useState<Category>("全部讨论");
   const [query, setQuery] = useState("");
-  const [posts, setPosts] = useState(initialPosts);
+  const [posts, setPosts] = useState<Post[]>([]);
   const [liked, setLiked] = useState<Set<string>>(() => new Set());
+  const [loadingPosts, setLoadingPosts] = useState(true);
+  const [forumError, setForumError] = useState("");
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [composerOpen, setComposerOpen] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -60,12 +64,32 @@ export function App() {
   const deferredQuery = useDeferredValue(query.trim().toLowerCase());
 
   useEffect(() => {
-    if (!isSupabaseConfigured) return;
-    void listPosts()
-      .then((databasePosts) => {
-        if (databasePosts.length) setPosts(databasePosts);
-      })
-      .catch(() => showToast("论坛数据加载失败，已保留当前内容"));
+    let active = true;
+    const load = async () => {
+      try {
+        const [databasePosts, databaseLikes] = await Promise.all([
+          listPosts(),
+          listCurrentUserLikes().catch(() => new Set<string>()),
+        ]);
+        if (!active) return;
+        setPosts(databasePosts);
+        setLiked(databaseLikes);
+        setForumError("");
+      } catch (error) {
+        if (!active) return;
+        setPosts([]);
+        setForumError(error instanceof Error ? error.message : "论坛数据加载失败");
+      } finally {
+        if (active) setLoadingPosts(false);
+      }
+    };
+
+    void load();
+    const unsubscribe = subscribeToForumChanges(() => void load());
+    return () => {
+      active = false;
+      unsubscribe();
+    };
   }, []);
 
   const visiblePosts = useMemo(() => {
@@ -86,28 +110,23 @@ export function App() {
 
   const toggleLike = async (postId: string) => {
     const willLike = !liked.has(postId);
-    if (isSupabaseConfigured) {
-      try {
-        await setPostLike(postId, willLike);
-      } catch (error) {
-        showToast(error instanceof Error ? error.message : "点赞失败");
-        return;
-      }
+    try {
+      await setPostLike(postId, willLike);
+      const [databasePosts, databaseLikes] = await Promise.all([
+        listPosts(),
+        listCurrentUserLikes(),
+      ]);
+      setPosts(databasePosts);
+      setLiked(databaseLikes);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "点赞失败");
     }
-
-    setLiked((current) => {
-      const next = new Set(current);
-      next.has(postId) ? next.delete(postId) : next.add(postId);
-      return next;
-    });
   };
 
-  const createPost = async (post: Post) => {
+  const createPost = async (post: Pick<Post, "title" | "content" | "category">) => {
     try {
-      const savedPost = isSupabaseConfigured
-        ? await createDatabasePost(post)
-        : post;
-      setPosts((current) => [savedPost, ...current]);
+      await createDatabasePost(post);
+      setPosts(await listPosts());
       setComposerOpen(false);
       setActiveCategory("全部讨论");
       showToast("帖子已发布");
@@ -115,6 +134,16 @@ export function App() {
     } catch (error) {
       showToast(error instanceof Error ? error.message : "发布失败");
       return false;
+    }
+  };
+
+  const promotePost = async (postId: string) => {
+    try {
+      await highlightPost(postId);
+      setPosts(await listPosts());
+      showToast("VIP 高亮已保存到数据库");
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "高亮失败");
     }
   };
 
@@ -166,8 +195,20 @@ export function App() {
             ))}
           </div>
 
-          <div className="post-list">
-            {visiblePosts.length ? (
+          <div className="post-list" aria-busy={loadingPosts}>
+            {loadingPosts ? (
+              <div className="empty-state">
+                <Clock3 size={34} />
+                <h2>正在读取论坛</h2>
+                <p>帖子只从 Supabase 数据库加载。</p>
+              </div>
+            ) : forumError ? (
+              <div className="empty-state">
+                <CircleHelp size={34} />
+                <h2>论坛暂时无法加载</h2>
+                <p>{forumError}</p>
+              </div>
+            ) : visiblePosts.length ? (
               visiblePosts.map((post) => (
                 <PostRow
                   key={post.id}
@@ -180,8 +221,12 @@ export function App() {
             ) : (
               <div className="empty-state">
                 <Search size={34} />
-                <h2>没有找到相关讨论</h2>
-                <p>换一个关键词，或浏览其他分类。</p>
+                <h2>{posts.length ? "没有找到相关讨论" : "暂无真实帖子"}</h2>
+                <p>
+                  {posts.length
+                    ? "换一个关键词，或浏览其他分类。"
+                    : "发布第一条来自 Supabase 的讨论。"}
+                </p>
               </div>
             )}
           </div>
@@ -203,13 +248,13 @@ export function App() {
       {composerOpen ? (
         <Composer onClose={() => setComposerOpen(false)} onCreate={createPost} />
       ) : null}
-      {selectedPost ? (
+      {selectedPost && posts.some((post) => post.id === selectedPost.id) ? (
         <PostDialog
-          post={selectedPost}
+          post={posts.find((post) => post.id === selectedPost.id)!}
           isLiked={liked.has(selectedPost.id)}
           onLike={() => toggleLike(selectedPost.id)}
           onClose={() => setSelectedPost(null)}
-          onPromote={() => showToast("VIP 高亮已应用")}
+          onPromote={() => promotePost(selectedPost.id)}
         />
       ) : null}
       {toast ? <div className="toast">{toast}</div> : null}
@@ -272,10 +317,8 @@ function Header({
       <button className="profile">
         <span className="avatar">🧑</span>
         <span className="profile-copy">
-          <strong>FishBall_玩家</strong>
-          <span>
-            LV.12 <em>VIP</em>
-          </span>
+          <strong>社区账户</strong>
+          <span>登录后可参与讨论</span>
         </span>
         <ChevronDown size={15} />
       </button>
@@ -390,7 +433,7 @@ function PostMetrics({
       </span>
       <button className={isLiked ? "liked" : ""} onClick={onLike} title="点赞">
         <ThumbsUp size={16} fill={isLiked ? "currentColor" : "none"} />
-        {post.likes + (isLiked ? 1 : 0)}
+        {post.likes}
       </button>
     </span>
   );
@@ -458,7 +501,7 @@ function Composer({
   onCreate,
 }: {
   onClose: () => void;
-  onCreate: (post: Post) => Promise<boolean>;
+  onCreate: (post: Pick<Post, "title" | "content" | "category">) => Promise<boolean>;
 }) {
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
@@ -470,16 +513,9 @@ function Composer({
     if (title.trim().length < 3 || content.trim().length < 10) return;
     setSubmitting(true);
     await onCreate({
-      id: crypto.randomUUID(),
       title: title.trim(),
       content: content.trim(),
       category,
-      tag: "新帖",
-      author: "FishBall_玩家",
-      age: "刚刚",
-      comments: 0,
-      likes: 0,
-      avatar: "🧑",
     });
     setSubmitting(false);
   };
@@ -560,21 +596,11 @@ function PostDialog({
   onClose: () => void;
   onPromote: () => void;
 }) {
-  const [comments, setComments] = useState<ForumComment[]>(
-    isSupabaseConfigured
-      ? []
-      : [{
-          id: "demo-comment",
-          author: "方块旅人",
-          body: "这个话题很有帮助，感谢分享！",
-          age: "12 分钟前",
-        }],
-  );
+  const [comments, setComments] = useState<ForumComment[]>([]);
   const [comment, setComment] = useState("");
   const [commentStatus, setCommentStatus] = useState("");
 
   useEffect(() => {
-    if (!isSupabaseConfigured) return;
     void listComments(post.id)
       .then(setComments)
       .catch(() => setCommentStatus("评论加载失败"));
@@ -585,15 +611,8 @@ function PostDialog({
     if (!comment.trim()) return;
     setCommentStatus("");
     try {
-      const savedComment = isSupabaseConfigured
-        ? await createComment(post.id, comment.trim())
-        : {
-            id: crypto.randomUUID(),
-            author: "FishBall_玩家",
-            body: comment.trim(),
-            age: "刚刚",
-          };
-      setComments((current) => [...current, savedComment]);
+      await createComment(post.id, comment.trim());
+      setComments(await listComments(post.id));
       setComment("");
     } catch (error) {
       setCommentStatus(error instanceof Error ? error.message : "评论发布失败");
@@ -624,14 +643,14 @@ function PostDialog({
         <div className="dialog-actions">
           <button className={isLiked ? "secondary-button liked" : "secondary-button"} onClick={onLike}>
             <ThumbsUp size={16} fill={isLiked ? "currentColor" : "none"} />
-            {isLiked ? "已点赞" : "点赞"} · {post.likes + (isLiked ? 1 : 0)}
+            {isLiked ? "已点赞" : "点赞"} · {post.likes}
           </button>
           <button className="vip-button" onClick={onPromote}>
             <Sparkles size={16} /> VIP 高亮
           </button>
         </div>
         <div className="comments">
-          <h3>评论 {post.comments + comments.length}</h3>
+          <h3>评论 {comments.length}</h3>
           {comments.map((item, index) => (
             <div className="comment" key={`${item.author}-${index}`}>
               <span className="comment-avatar"><UserRound size={17} /></span>
