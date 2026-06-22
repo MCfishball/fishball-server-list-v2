@@ -19,6 +19,15 @@ type DatabaseComment = {
   created_at: string;
 };
 
+export type ForumPostingLimits = {
+  role: "user" | "vip" | "admin";
+  dailyLimit: number | null;
+  postsToday: number;
+  remainingToday: number | null;
+  cooldownSeconds: number;
+  cooldownRemainingSeconds: number;
+};
+
 const categoryToDb = {
   服务器讨论: "servers_discussion",
   求助: "help",
@@ -55,6 +64,72 @@ function toPost(row: DatabasePost, comments: number, likes: number, author?: str
     pinned: row.is_pinned,
     highlighted: row.is_highlighted,
   };
+}
+
+function normalizePostingLimits(value: unknown): ForumPostingLimits {
+  const data = value as Partial<ForumPostingLimits> | null;
+  const role = data?.role === "admin" || data?.role === "vip" ? data.role : "user";
+  const dailyLimit =
+    typeof data?.dailyLimit === "number" || data?.dailyLimit === null
+      ? data.dailyLimit
+      : role === "admin"
+        ? null
+        : role === "vip"
+          ? 3
+          : 1;
+
+  return {
+    role,
+    dailyLimit,
+    postsToday: typeof data?.postsToday === "number" ? data.postsToday : 0,
+    remainingToday:
+      typeof data?.remainingToday === "number" || data?.remainingToday === null
+        ? data.remainingToday
+        : dailyLimit === null
+          ? null
+          : dailyLimit,
+    cooldownSeconds:
+      typeof data?.cooldownSeconds === "number"
+        ? data.cooldownSeconds
+        : role === "admin"
+          ? 0
+          : role === "vip"
+            ? 20
+            : 60,
+    cooldownRemainingSeconds:
+      typeof data?.cooldownRemainingSeconds === "number" ? data.cooldownRemainingSeconds : 0,
+  };
+}
+
+function postLimitExceededMessage(role: ForumPostingLimits["role"]) {
+  if (role === "vip") return "VIP用户每天最多发布 3 个帖子";
+  return "普通用户每天最多发布 1 个帖子，开通 VIP 可提升至 3 个";
+}
+
+function normalizePostCreateError(message: string) {
+  if (message.includes("普通用户每天最多发布 1 个帖子")) {
+    return "普通用户每天最多发布 1 个帖子，开通 VIP 可提升至 3 个";
+  }
+
+  if (message.includes("VIP用户每天最多发布 3 个帖子")) {
+    return "VIP用户每天最多发布 3 个帖子";
+  }
+
+  if (message.includes("发帖太快了")) {
+    return message;
+  }
+
+  return "发布失败，请稍后重试";
+}
+
+export async function getCurrentPostingLimits(): Promise<ForumPostingLimits> {
+  if (!supabase) throw new Error("Supabase 尚未配置，发帖限制无法加载");
+  await requireUserId();
+
+  const { data, error } = await supabase.rpc("fishball_v2_get_posting_limits");
+  if (error) throw error;
+
+  return normalizePostingLimits(data);
 }
 
 export async function listPosts(): Promise<Post[]> {
@@ -114,6 +189,18 @@ export async function listPosts(): Promise<Post[]> {
 export async function createPost(input: Pick<Post, "title" | "content" | "category">) {
   if (!supabase) throw new Error("Supabase 尚未配置");
   const userId = await requireUserId();
+
+  const limits = await getCurrentPostingLimits();
+  if (limits.role !== "admin") {
+    if ((limits.remainingToday ?? 0) <= 0) {
+      throw new Error(postLimitExceededMessage(limits.role));
+    }
+
+    if (limits.cooldownRemainingSeconds > 0) {
+      throw new Error(`发帖太快了，请等待 ${limits.cooldownRemainingSeconds} 秒后再发布`);
+    }
+  }
+
   const { data, error } = await supabase
     .from("posts")
     .insert({
@@ -125,7 +212,7 @@ export async function createPost(input: Pick<Post, "title" | "content" | "catego
     .select("*")
     .single();
 
-  if (error) throw error;
+  if (error) throw new Error(normalizePostCreateError(error.message));
   return toPost(data as DatabasePost, 0, 0);
 }
 

@@ -8,6 +8,10 @@ const cleanup = readFileSync(
   "supabase/migrations/202606190005_remove_fake_forum_data.sql",
   "utf8",
 );
+const postLimits = readFileSync(
+  "supabase/migrations/202606220006_v2_forum_post_limits.sql",
+  "utf8",
+);
 const auth = readFileSync("src/lib/supabase.ts", "utf8");
 
 assert.doesNotMatch(app, /initialPosts|demo-comment|isSupabaseConfigured\s*\?/);
@@ -18,11 +22,35 @@ assert.match(api, /\.from\("comments"\)/);
 assert.match(api, /\.from\("post_likes"\)/);
 assert.match(api, /requireUserId\(\)/);
 assert.match(api, /postgres_changes/);
+assert.match(api, /getCurrentPostingLimits/);
+assert.match(api, /普通用户每天最多发布 1 个帖子，开通 VIP 可提升至 3 个/);
+assert.match(api, /VIP用户每天最多发布 3 个帖子/);
 assert.match(cleanup, /delete from public\.posts/i);
 assert.match(cleanup, /supabase_realtime/);
 assert.match(auth, /supabase\.auth\.getSession\(\)/);
 assert.match(auth, /supabase\.auth\.onAuthStateChange/);
 assert.match(auth, /persistSession: true/);
 assert.doesNotMatch(app, /isLoggedIn|mock user|localStorage.*user/i);
+assert.doesNotMatch(app, /VIP.*10|10.*篇|10.*帖子/i);
+assert.doesNotMatch(api, /VIP.*10|10.*篇|10.*帖子/i);
+assert.match(app, /今日还可发布 \$\{postingLimits\.remainingToday \?\? 0\} \/ 1 篇帖子/);
+assert.match(app, /今日还可发布 \$\{postingLimits\.remainingToday \?\? 0\} \/ 3 篇帖子/);
+assert.match(app, /管理员发帖不限每日数量，也不限制冷却时间/);
+assert.match(app, /isDailyLimitExceeded/);
+assert.match(app, /role="alert"/);
+assert.match(app, /今日发帖额度已用完/);
+assert.match(app, /普通用户每天最多发布 1 个帖子，开通 VIP 可提升至 3 个。今日发帖额度已用完。/);
+assert.match(app, /VIP用户每天最多发布 3 个帖子，今日发帖额度已用完。/);
+assert.match(postLimits, /Normal users: 1 post/);
+assert.match(postLimits, /VIP users:\s+3 posts/);
+assert.match(postLimits, /Admins:\s+unlimited posts/);
+assert.match(postLimits, /daily_limit := 3/);
+assert.match(postLimits, /cooldown_seconds := 20/);
+assert.match(postLimits, /daily_limit := 1/);
+assert.match(postLimits, /cooldown_seconds := 60/);
+assert.match(postLimits, /VIP用户每天最多发布 3 个帖子/);
+assert.match(postLimits, /普通用户每天最多发布 1 个帖子，开通 VIP 可提升至 3 个/);
+assert.match(postLimits, /posts_enforce_create_limits/);
+assert.doesNotMatch(postLimits, /daily_limit := 10|10 posts|10 个帖子|10 篇帖子/);
 
 console.log("Forum regression checks passed");

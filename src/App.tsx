@@ -29,7 +29,9 @@ import { Category, Post } from "./data";
 import {
   createComment,
   createPost as createDatabasePost,
+  ForumPostingLimits,
   ForumComment,
+  getCurrentPostingLimits,
   highlightPost,
   listComments,
   listCurrentUserLikes,
@@ -65,6 +67,7 @@ export function App() {
   const [toast, setToast] = useState("");
   const [session, setSession] = useState<Session | null>(null);
   const [authReady, setAuthReady] = useState(false);
+  const [postingLimits, setPostingLimits] = useState<ForumPostingLimits | null>(null);
   const deferredQuery = useDeferredValue(query.trim().toLowerCase());
 
   useEffect(() => {
@@ -95,12 +98,14 @@ export function App() {
   useEffect(() => {
     if (!session?.user.id) {
       setLiked(new Set());
+      setPostingLimits(null);
       return;
     }
 
-    void listCurrentUserLikes()
-      .then(setLiked)
-      .catch(() => setLiked(new Set()));
+    void Promise.all([
+      listCurrentUserLikes().then(setLiked).catch(() => setLiked(new Set())),
+      getCurrentPostingLimits().then(setPostingLimits).catch(() => setPostingLimits(null)),
+    ]);
   }, [session?.user.id]);
 
   useEffect(() => {
@@ -166,7 +171,12 @@ export function App() {
   const createPost = async (post: Pick<Post, "title" | "content" | "category">) => {
     try {
       await createDatabasePost(post);
-      setPosts(await listPosts());
+      const [databasePosts, nextPostingLimits] = await Promise.all([
+        listPosts(),
+        getCurrentPostingLimits().catch(() => null),
+      ]);
+      setPosts(databasePosts);
+      if (nextPostingLimits) setPostingLimits(nextPostingLimits);
       setComposerOpen(false);
       setActiveCategory("全部讨论");
       showToast("帖子已发布");
@@ -287,7 +297,11 @@ export function App() {
       <Footer />
 
       {composerOpen ? (
-        <Composer onClose={() => setComposerOpen(false)} onCreate={createPost} />
+        <Composer
+          onClose={() => setComposerOpen(false)}
+          onCreate={createPost}
+          postingLimits={postingLimits}
+        />
       ) : null}
       {selectedPost && posts.some((post) => post.id === selectedPost.id) ? (
         <PostDialog
@@ -528,9 +542,11 @@ function Rule({
 function Composer({
   onClose,
   onCreate,
+  postingLimits,
 }: {
   onClose: () => void;
   onCreate: (post: Pick<Post, "title" | "content" | "category">) => Promise<boolean>;
+  postingLimits: ForumPostingLimits | null;
 }) {
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
@@ -539,7 +555,7 @@ function Composer({
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    if (title.trim().length < 3 || content.trim().length < 10) return;
+    if (title.trim().length < 3 || content.trim().length < 10 || isDailyLimitExceeded) return;
     setSubmitting(true);
     await onCreate({
       title: title.trim(),
@@ -549,6 +565,38 @@ function Composer({
     setSubmitting(false);
   };
 
+  const postingLimitText = (() => {
+    if (!postingLimits) return "正在读取今日发帖额度…";
+    if (postingLimits.role === "admin") return "管理员发帖不限每日数量，也不限制冷却时间";
+    if (postingLimits.role === "vip") {
+      return `今日还可发布 ${postingLimits.remainingToday ?? 0} / 3 篇帖子`;
+    }
+    return `今日还可发布 ${postingLimits.remainingToday ?? 0} / 1 篇帖子`;
+  })();
+
+  const cooldownText =
+    postingLimits?.role === "admin"
+      ? "无冷却"
+      : postingLimits
+        ? `发帖冷却 ${postingLimits.cooldownSeconds} 秒${
+            postingLimits.cooldownRemainingSeconds > 0
+              ? `，还需等待 ${postingLimits.cooldownRemainingSeconds} 秒`
+              : ""
+          }`
+        : "正在读取冷却时间…";
+
+  const isDailyLimitExceeded =
+    Boolean(postingLimits) &&
+    postingLimits?.role !== "admin" &&
+    (postingLimits?.remainingToday ?? 0) <= 0;
+
+  const dailyLimitWarning =
+    isDailyLimitExceeded && postingLimits?.role === "vip"
+      ? "VIP用户每天最多发布 3 个帖子，今日发帖额度已用完。"
+      : isDailyLimitExceeded
+        ? "普通用户每天最多发布 1 个帖子，开通 VIP 可提升至 3 个。今日发帖额度已用完。"
+        : "";
+
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
       <form className="modal composer" onSubmit={submit} onMouseDown={(e) => e.stopPropagation()}>
@@ -556,6 +604,9 @@ function Composer({
           <div>
             <h2>发布新帖子</h2>
             <p>清晰描述你的话题，更容易获得高质量回复。</p>
+            <p className="posting-limit-hint">
+              {postingLimitText} · {cooldownText}
+            </p>
           </div>
           <button type="button" className="icon-button" onClick={onClose} aria-label="关闭">
             <X size={19} />
@@ -600,13 +651,19 @@ function Composer({
               disabled={
                 submitting ||
                 title.trim().length < 3 ||
-                content.trim().length < 10
+                content.trim().length < 10 ||
+                isDailyLimitExceeded
               }
             >
               <Send size={16} /> {submitting ? "发布中…" : "发布帖子"}
             </button>
           </div>
         </div>
+        {dailyLimitWarning ? (
+          <p className="form-status limit-warning" role="alert">
+            {dailyLimitWarning}
+          </p>
+        ) : null}
       </form>
     </div>
   );
