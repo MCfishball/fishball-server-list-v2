@@ -6,6 +6,7 @@ import {
   Crown,
   Edit3,
   FileText,
+  Flag,
   Flame,
   Heart,
   Home,
@@ -38,7 +39,10 @@ import {
   highlightPost,
   listComments,
   listCurrentUserLikes,
+  listCurrentUserReports,
   listPosts,
+  PostReportReason,
+  reportPost as submitPostReport,
   setPostLike,
   softDeletePost,
   subscribeToForumChanges,
@@ -68,12 +72,14 @@ export function App({ initialPostId }: { initialPostId?: string } = {}) {
   const [forumError, setForumError] = useState("");
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [editingPost, setEditingPost] = useState<Post | null>(null);
+  const [reportingPost, setReportingPost] = useState<Post | null>(null);
   const [composerOpen, setComposerOpen] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [toast, setToast] = useState("");
   const [session, setSession] = useState<Session | null>(null);
   const [authReady, setAuthReady] = useState(false);
   const [postingLimits, setPostingLimits] = useState<ForumPostingLimits | null>(null);
+  const [reportedPosts, setReportedPosts] = useState<Set<string>>(() => new Set());
   const deferredQuery = useDeferredValue(query.trim().toLowerCase());
   const isAdmin = postingLimits?.role === "admin";
 
@@ -122,12 +128,14 @@ export function App({ initialPostId }: { initialPostId?: string } = {}) {
   useEffect(() => {
     if (!session?.user.id) {
       setLiked(new Set());
+      setReportedPosts(new Set());
       setPostingLimits(null);
       return;
     }
 
     void Promise.all([
       listCurrentUserLikes().then(setLiked).catch(() => setLiked(new Set())),
+      listCurrentUserReports().then(setReportedPosts).catch(() => setReportedPosts(new Set())),
       getCurrentPostingLimits().then(setPostingLimits).catch(() => setPostingLimits(null)),
     ]);
   }, [session?.user.id]);
@@ -191,6 +199,30 @@ export function App({ initialPostId }: { initialPostId?: string } = {}) {
   };
 
   const canManagePost = (post: Post) => Boolean(session?.user.id && (post.userId === session.user.id || isAdmin));
+
+  const openReport = (post: Post) => {
+    if (!session?.user.id) {
+      showToast("请先登录后再举报");
+      return;
+    }
+
+    if (post.isDeleted) {
+      showToast("已删除的帖子不能举报");
+      return;
+    }
+
+    if (post.userId === session.user.id) {
+      showToast("不能举报自己的帖子");
+      return;
+    }
+
+    if (reportedPosts.has(post.id)) {
+      showToast("你已经举报过这篇帖子");
+      return;
+    }
+
+    setReportingPost(post);
+  };
 
   const openPost = (post: Post) => {
     setSelectedPost(post);
@@ -290,6 +322,23 @@ export function App({ initialPostId }: { initialPostId?: string } = {}) {
     }
   };
 
+  const submitReport = async (
+    post: Post,
+    input: { reason: PostReportReason; description: string },
+  ) => {
+    try {
+      const message = await submitPostReport(post.id, input);
+      setReportedPosts((current) => new Set(current).add(post.id));
+      setReportingPost(null);
+      showToast(message);
+      return { ok: true };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "举报提交失败，请稍后重试";
+      showToast(message);
+      return { ok: false, error: message };
+    }
+  };
+
   return (
     <div className="app">
       <Header
@@ -365,11 +414,13 @@ export function App({ initialPostId }: { initialPostId?: string } = {}) {
                   key={post.id}
                   post={post}
                   isLiked={liked.has(post.id)}
+                  isReported={reportedPosts.has(post.id)}
                   canManage={canManagePost(post)}
                   onLike={() => toggleLike(post.id)}
                   onOpen={() => openPost(post)}
                   onEdit={() => setEditingPost(post)}
                   onDelete={() => deletePost(post)}
+                  onReport={() => openReport(post)}
                 />
               ))
             ) : (
@@ -408,8 +459,10 @@ export function App({ initialPostId }: { initialPostId?: string } = {}) {
           onPromote={() => promotePost(selectedPost.id)}
           canInteract={Boolean(session)}
           canManage={canManagePost(selectedPost)}
+          isReported={reportedPosts.has(selectedPost.id)}
           onEdit={() => setEditingPost(posts.find((post) => post.id === selectedPost.id) ?? selectedPost)}
           onDelete={() => deletePost(posts.find((post) => post.id === selectedPost.id) ?? selectedPost)}
+          onReport={() => openReport(posts.find((post) => post.id === selectedPost.id) ?? selectedPost)}
         />
       ) : null}
       {editingPost ? (
@@ -417,6 +470,13 @@ export function App({ initialPostId }: { initialPostId?: string } = {}) {
           post={editingPost}
           onClose={() => setEditingPost(null)}
           onSave={(input) => editPost(editingPost, input)}
+        />
+      ) : null}
+      {reportingPost ? (
+        <ReportPostModal
+          post={reportingPost}
+          onClose={() => setReportingPost(null)}
+          onSubmit={(input) => submitReport(reportingPost, input)}
         />
       ) : null}
       {toast ? <div className="toast">{toast}</div> : null}
@@ -541,22 +601,38 @@ function Sidebar({
 function PostRow({
   post,
   isLiked,
+  isReported,
   canManage,
   onLike,
   onOpen,
   onEdit,
   onDelete,
+  onReport,
 }: {
   post: Post;
   isLiked: boolean;
+  isReported: boolean;
   canManage: boolean;
   onLike: () => void;
   onOpen: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  onReport: () => void;
 }) {
-  const actionButtons = canManage ? (
+  const actionButtons = (
     <span className="post-row-actions">
+      <button
+        className={isReported ? "reported" : ""}
+        onClick={(event) => {
+          event.stopPropagation();
+          onReport();
+        }}
+        disabled={isReported}
+      >
+        <Flag size={14} /> {isReported ? "已举报" : "举报"}
+      </button>
+      {canManage ? (
+        <>
       <button
         onClick={(event) => {
           event.stopPropagation();
@@ -574,8 +650,10 @@ function PostRow({
       >
         <Trash2 size={14} /> 删除
       </button>
+        </>
+      ) : null}
     </span>
-  ) : null;
+  );
 
   if (post.pinned) {
     return (
@@ -905,9 +983,110 @@ function EditPostModal({
   );
 }
 
+const reportReasons: PostReportReason[] = [
+  "垃圾广告",
+  "恶意刷帖",
+  "不友善内容",
+  "违法违规",
+  "标题党 / 无意义内容",
+  "其他",
+];
+
+function ReportPostModal({
+  post,
+  onClose,
+  onSubmit,
+}: {
+  post: Post;
+  onClose: () => void;
+  onSubmit: (input: { reason: PostReportReason; description: string }) => Promise<{
+    ok: boolean;
+    error?: string;
+  }>;
+}) {
+  const [reason, setReason] = useState<PostReportReason>("垃圾广告");
+  const [description, setDescription] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [status, setStatus] = useState("");
+  const descriptionTooLong = description.trim().length > 300;
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!reason) {
+      setStatus("请选择举报原因");
+      return;
+    }
+
+    if (descriptionTooLong) {
+      setStatus("补充说明不能超过 300 字");
+      return;
+    }
+
+    setSubmitting(true);
+    setStatus("");
+    const result = await onSubmit({
+      reason,
+      description: description.trim(),
+    });
+    setSubmitting(false);
+    if (!result.ok) setStatus(result.error ?? "举报提交失败，请稍后重试");
+  };
+
+  return (
+    <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
+      <form className="modal composer report-modal" onSubmit={submit} onMouseDown={(e) => e.stopPropagation()}>
+        <div className="modal-heading">
+          <div>
+            <h2>举报帖子</h2>
+            <p>被举报帖子：{post.title}</p>
+          </div>
+          <button type="button" className="icon-button" onClick={onClose} aria-label="关闭">
+            <X size={19} />
+          </button>
+        </div>
+
+        <label>
+          举报原因
+          <select value={reason} onChange={(event) => setReason(event.target.value as PostReportReason)}>
+            {reportReasons.map((item) => (
+              <option key={item}>{item}</option>
+            ))}
+          </select>
+        </label>
+
+        <label>
+          补充说明（可选）
+          <textarea
+            value={description}
+            onChange={(event) => setDescription(event.target.value)}
+            placeholder="可以补充说明具体问题，最多 300 字…"
+            maxLength={300}
+            rows={5}
+          />
+        </label>
+
+        <div className="modal-footer">
+          <span>{description.length} / 300</span>
+          <div>
+            <button type="button" className="secondary-button" onClick={onClose}>
+              取消
+            </button>
+            <button className="primary-button" disabled={submitting || descriptionTooLong}>
+              <Flag size={16} /> {submitting ? "提交中…" : "提交举报"}
+            </button>
+          </div>
+        </div>
+
+        {status ? <p className="form-status limit-warning" role="alert">{status}</p> : null}
+      </form>
+    </div>
+  );
+}
+
 function PostDialog({
   post,
   isLiked,
+  isReported,
   onLike,
   onClose,
   onPromote,
@@ -915,9 +1094,11 @@ function PostDialog({
   canManage,
   onEdit,
   onDelete,
+  onReport,
 }: {
   post: Post;
   isLiked: boolean;
+  isReported: boolean;
   onLike: () => void;
   onClose: () => void;
   onPromote: () => void;
@@ -925,6 +1106,7 @@ function PostDialog({
   canManage: boolean;
   onEdit: () => void;
   onDelete: () => void;
+  onReport: () => void;
 }) {
   const [comments, setComments] = useState<ForumComment[]>([]);
   const [comment, setComment] = useState("");
@@ -989,6 +1171,9 @@ function PostDialog({
           </button>
           <button className="vip-button" onClick={onPromote}>
             <Sparkles size={16} /> VIP 高亮
+          </button>
+          <button className="secondary-button" onClick={onReport} disabled={isReported}>
+            <Flag size={16} /> {isReported ? "已举报" : "举报"}
           </button>
           {canManage ? (
             <>

@@ -1,4 +1,5 @@
 import { App } from "./App";
+import { AdminPage } from "./pages/AdminPage";
 import { FeedbackPage } from "./pages/FeedbackPage";
 import { SubmitServerPage } from "./pages/SubmitServerPage";
 
@@ -10,6 +11,7 @@ export function Router() {
   }
 
   if (path === "/forum") return <App />;
+  if (path === "/admin") return <AdminPage />;
   if (path === "/feedback") return <FeedbackPage />;
   if (path === "/submit-server") return <SubmitServerPage />;
 

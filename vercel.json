@@ -1,8 +1,24 @@
 {
   "routes": [
     {
+      "src": "/api/forum/posts/([^/]+)/report",
+      "dest": "/api/forum/posts/[id]/report.js"
+    },
+    {
       "src": "/api/forum/posts/([^/]+)",
       "dest": "/api/forum/posts/[id].js"
+    },
+    {
+      "src": "/api/me/post-reports",
+      "dest": "/api/me/post-reports.js"
+    },
+    {
+      "src": "/api/admin/post-reports/action",
+      "dest": "/api/admin/post-reports/action.js"
+    },
+    {
+      "src": "/api/admin/post-reports",
+      "dest": "/api/admin/post-reports.js"
     },
     {
       "handle": "filesystem"

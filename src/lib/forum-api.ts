@@ -33,6 +33,25 @@ export type ForumPostingLimits = {
   cooldownRemainingSeconds: number;
 };
 
+export type PostReportReason =
+  | "垃圾广告"
+  | "恶意刷帖"
+  | "不友善内容"
+  | "违法违规"
+  | "标题党 / 无意义内容"
+  | "其他";
+
+export type MyPostReport = {
+  id: string;
+  post_id: string;
+  reason: PostReportReason;
+  description: string | null;
+  status: "pending" | "reviewing" | "resolved" | "rejected";
+  admin_note: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 const categoryToDb = {
   服务器讨论: "servers_discussion",
   求助: "help",
@@ -326,6 +345,39 @@ export async function softDeletePost(postId: string) {
   return data.message ?? "帖子已删除";
 }
 
+export async function reportPost(
+  postId: string,
+  input: { reason: PostReportReason; description?: string },
+) {
+  const token = await getAccessToken();
+  const response = await fetch(
+    forumApiUrl(`/api/forum/posts/${encodeURIComponent(postId)}/report`),
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        reason: input.reason,
+        description: input.description ?? "",
+      }),
+    },
+  );
+
+  const data = (await response.json().catch(() => ({}))) as {
+    success?: boolean;
+    message?: string;
+    report?: MyPostReport;
+  };
+
+  if (!response.ok || !data.success) {
+    throw new Error(data.message ?? "举报提交失败，请稍后重试");
+  }
+
+  return data.message ?? "举报已提交，管理员会尽快处理";
+}
+
 export async function setPostLike(postId: string, liked: boolean) {
   if (!supabase) throw new Error("Supabase 尚未配置");
   const userId = await requireUserId();
@@ -356,6 +408,27 @@ export async function listCurrentUserLikes(): Promise<Set<string>> {
 
   if (error) throw error;
   return new Set((data ?? []).map((row) => row.post_id));
+}
+
+export async function listCurrentUserReports(): Promise<Set<string>> {
+  const token = await getAccessToken();
+  const response = await fetch(forumApiUrl("/api/me/post-reports"), {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  const data = (await response.json().catch(() => ({}))) as {
+    success?: boolean;
+    message?: string;
+    reports?: MyPostReport[];
+  };
+
+  if (!response.ok || !data.success) {
+    throw new Error(data.message ?? "举报记录加载失败");
+  }
+
+  return new Set((data.reports ?? []).map((report) => report.post_id));
 }
 
 export async function highlightPost(postId: string) {
