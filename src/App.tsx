@@ -310,7 +310,7 @@ export function App({ initialPostId }: { initialPostId?: string } = {}) {
           }}
           onCompose={() => {
             if (!session) {
-              showToast("请先在 V1 登录，再通过主站“论坛”入口进入");
+              showToast("请先在主页面登录，再通过“论坛”入口进入");
               return;
             }
             setComposerOpen(true);
@@ -1017,7 +1017,7 @@ function PostDialog({
             <input
               value={comment}
               onChange={(e) => setComment(e.target.value)}
-              placeholder={canInteract ? "友善地参与讨论…" : "请先在 V1 登录"}
+              placeholder={canInteract ? "友善地参与讨论…" : "请先在主页面登录"}
               aria-label="发表评论"
               disabled={!canInteract}
             />
