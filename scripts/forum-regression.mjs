@@ -17,7 +17,7 @@ const softDelete = readFileSync(
   "utf8",
 );
 const auth = readFileSync("src/lib/supabase.ts", "utf8");
-const forumPostApi = readFileSync("api/forum/posts/[id]/index.js", "utf8");
+const forumPostApi = readFileSync("api/forum/posts/[id].js", "utf8");
 
 assert.doesNotMatch(app, /initialPosts|demo-comment|isSupabaseConfigured\s*\?/);
 assert.doesNotMatch(data, /demo-post|initialPosts/);
