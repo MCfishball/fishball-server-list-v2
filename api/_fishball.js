@@ -97,8 +97,34 @@ export function getPathParam(request, pattern) {
   return match?.[1] ? decodeURIComponent(match[1]) : undefined;
 }
 
+export function getErrorMessage(error) {
+  if (!error) return "";
+  if (error instanceof Error) return error.message;
+  if (typeof error === "string") return error;
+  if (typeof error === "object" && typeof error.message === "string") return error.message;
+  return "";
+}
+
 export function mapReportError(message, fallback = "操作失败，请稍后重试") {
   if (!message) return fallback;
+
+  if (
+    message.includes("post_reports") &&
+    (message.includes("does not exist") || message.includes("schema cache"))
+  ) {
+    return "举报系统数据库尚未初始化，请管理员执行最新 Supabase migration";
+  }
+
+  if (
+    message.includes("fishball_v2_create_post_report") &&
+    (message.includes("does not exist") || message.includes("Could not find the function"))
+  ) {
+    return "举报系统函数尚未初始化，正在尝试兼容写入";
+  }
+
+  if (message.includes("row-level security")) {
+    return "举报系统权限策略未生效，请管理员检查 post_reports RLS";
+  }
 
   const knownMessages = [
     "请先登录后再举报",
@@ -125,5 +151,6 @@ export function reportStatusForError(message) {
   if (message.includes("帖子不存在") || message.includes("举报记录不存在")) return 404;
   if (message.includes("你已经举报过这篇帖子")) return 409;
   if (message.includes("举报太频繁")) return 429;
+  if (message.includes("数据库尚未初始化") || message.includes("权限策略未生效")) return 503;
   return 400;
 }

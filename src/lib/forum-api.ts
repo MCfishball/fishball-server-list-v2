@@ -350,6 +350,8 @@ export async function reportPost(
   input: { reason: PostReportReason; description?: string },
 ) {
   const token = await getAccessToken();
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), 12000);
   const response = await fetch(
     forumApiUrl(`/api/forum/posts/${encodeURIComponent(postId)}/report`),
     {
@@ -362,8 +364,14 @@ export async function reportPost(
         reason: input.reason,
         description: input.description ?? "",
       }),
+      signal: controller.signal,
     },
-  );
+  ).catch((error) => {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error("举报提交超时，请稍后再试");
+    }
+    throw error;
+  }).finally(() => window.clearTimeout(timeoutId));
 
   const data = (await response.json().catch(() => ({}))) as {
     success?: boolean;
