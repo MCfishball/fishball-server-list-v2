@@ -253,10 +253,11 @@ export function App({ initialPostId }: { initialPostId?: string } = {}) {
       setSelectedPost((current) => (current?.id === post.id ? refreshedPost : current));
       setEditingPost(null);
       showToast("修改成功");
-      return true;
+      return { ok: true };
     } catch (error) {
-      showToast(error instanceof Error ? error.message : "修改帖子失败");
-      return false;
+      const message = error instanceof Error ? error.message : "修改帖子失败";
+      showToast(message);
+      return { ok: false, error: message };
     }
   };
 
@@ -813,7 +814,7 @@ function EditPostModal({
 }: {
   post: Post;
   onClose: () => void;
-  onSave: (input: Pick<Post, "title" | "content">) => Promise<boolean>;
+  onSave: (input: Pick<Post, "title" | "content">) => Promise<{ ok: boolean; error?: string }>;
 }) {
   const [title, setTitle] = useState(post.title);
   const [content, setContent] = useState(post.content);
@@ -827,14 +828,14 @@ function EditPostModal({
 
     setStatus("正在保存修改…");
     setSubmitting(true);
-    const saved = await onSave({
+    const result = await onSave({
       title: title.trim(),
       content: content.trim(),
     });
     setSubmitting(false);
 
-    if (saved) onClose();
-    else setStatus("修改失败，请检查登录状态后重试。");
+    if (result.ok) onClose();
+    else setStatus(result.error ?? "修改失败，请检查登录状态后重试。");
   };
 
   const submit = async (event: FormEvent) => {
