@@ -270,6 +270,14 @@ async function getAccessToken() {
   return session.access_token;
 }
 
+function forumApiUrl(path: string) {
+  if (typeof window !== "undefined" && /(^|\.)mcfishball\.top$/i.test(window.location.hostname)) {
+    return `https://fishball-server-list-v2.vercel.app${path}`;
+  }
+
+  return path;
+}
+
 function cleanForumApiError(error: unknown, fallback: string) {
   if (error instanceof Error && error.message) return error.message;
   return fallback;
@@ -280,7 +288,7 @@ export async function updatePost(
   input: Pick<Post, "title" | "content">,
 ): Promise<Post> {
   const token = await getAccessToken();
-  const response = await fetch(`/api/forum/posts/${encodeURIComponent(postId)}`, {
+  const response = await fetch(forumApiUrl(`/api/forum/posts/${encodeURIComponent(postId)}`), {
     method: "PATCH",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -303,7 +311,7 @@ export async function updatePost(
 
 export async function softDeletePost(postId: string) {
   const token = await getAccessToken();
-  const response = await fetch(`/api/forum/posts/${encodeURIComponent(postId)}`, {
+  const response = await fetch(forumApiUrl(`/api/forum/posts/${encodeURIComponent(postId)}`), {
     method: "DELETE",
     headers: {
       Authorization: `Bearer ${token}`,

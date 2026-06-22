@@ -10,8 +10,15 @@ const supabaseAnonKey =
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 function json(response, status, payload) {
+  setCorsHeaders(response);
   response.status(status).setHeader("Content-Type", "application/json; charset=utf-8");
   response.end(JSON.stringify(payload));
+}
+
+function setCorsHeaders(response) {
+  response.setHeader("Access-Control-Allow-Origin", "*");
+  response.setHeader("Access-Control-Allow-Methods", "PATCH, DELETE, OPTIONS");
+  response.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type");
 }
 
 function getPostId(request) {
@@ -78,6 +85,13 @@ function statusForError(errorMessage) {
 }
 
 export default async function handler(request, response) {
+  setCorsHeaders(response);
+
+  if (request.method === "OPTIONS") {
+    response.status(204).end();
+    return;
+  }
+
   const postId = getPostId(request);
   const authorization = getAuthorization(request);
 
