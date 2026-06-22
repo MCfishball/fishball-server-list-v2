@@ -818,12 +818,14 @@ function EditPostModal({
   const [title, setTitle] = useState(post.title);
   const [content, setContent] = useState(post.content);
   const [submitting, setSubmitting] = useState(false);
+  const [status, setStatus] = useState("");
   const titleValid = title.trim().length >= 3;
   const contentValid = content.trim().length >= 10;
 
   const save = async () => {
     if (!titleValid || !contentValid) return;
 
+    setStatus("正在保存修改…");
     setSubmitting(true);
     const saved = await onSave({
       title: title.trim(),
@@ -832,6 +834,7 @@ function EditPostModal({
     setSubmitting(false);
 
     if (saved) onClose();
+    else setStatus("修改失败，请检查登录状态后重试。");
   };
 
   const submit = async (event: FormEvent) => {
@@ -886,11 +889,16 @@ function EditPostModal({
               type="submit"
               className="primary-button"
               disabled={submitting || !titleValid || !contentValid}
+              onClick={(event) => {
+                event.preventDefault();
+                void save();
+              }}
             >
               <Send size={16} /> {submitting ? "保存中…" : "保存修改"}
             </button>
           </div>
         </div>
+        {status ? <p className="form-status">{status}</p> : null}
       </form>
     </div>
   );
