@@ -1256,6 +1256,34 @@ footer a:hover {
   padding: 46px 0 80px;
 }
 
+.admin-module-entry {
+  margin-top: 22px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.admin-module-entry a {
+  min-height: 42px;
+  padding: 0 16px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.035);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.admin-module-entry a.active,
+.admin-module-entry a:hover {
+  color: var(--green);
+  border-color: rgba(102, 209, 122, 0.48);
+  background: rgba(102, 209, 122, 0.08);
+}
+
 .admin-card {
   margin-top: 26px;
   padding: 24px;

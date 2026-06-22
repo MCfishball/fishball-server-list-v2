@@ -11,6 +11,7 @@ export function Router() {
   }
 
   if (path === "/forum") return <App />;
+  if (path === "/forum-admin") return <AdminPage />;
   if (path === "/admin") return <AdminPage />;
   if (path === "/feedback") return <FeedbackPage />;
   if (path === "/submit-server") return <SubmitServerPage />;

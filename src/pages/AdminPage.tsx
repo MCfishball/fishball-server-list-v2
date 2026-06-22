@@ -172,14 +172,21 @@ export function AdminPage() {
           <ShieldCheck size={28} />
           <div>
             <h1>管理后台</h1>
-            <p>当前模块：帖子举报管理。管理员操作全部通过 /api/admin/* 校验。</p>
+            <p>论坛管理已放入后台管理内，管理员操作全部通过 /api/admin/* 校验。</p>
           </div>
+        </section>
+
+        <section className="admin-module-entry" aria-label="后台管理模块">
+          <a className="active" href="/admin">
+            <MessageSquareWarning size={17} />
+            <span>论坛管理</span>
+          </a>
         </section>
 
         <section className="admin-card">
           <div className="admin-card-heading">
             <div>
-              <h2><MessageSquareWarning size={20} /> 帖子举报管理</h2>
+              <h2><MessageSquareWarning size={20} /> 论坛管理 · 帖子举报</h2>
               <p>当前账号：{sessionEmail || "未登录 / 正在恢复登录状态"}</p>
             </div>
             <button className="secondary-button" onClick={() => void loadReports()}>
