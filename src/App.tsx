@@ -398,13 +398,6 @@ export function App({ initialPostId }: { initialPostId?: string } = {}) {
           postingLimits={postingLimits}
         />
       ) : null}
-      {editingPost ? (
-        <EditPostModal
-          post={editingPost}
-          onClose={() => setEditingPost(null)}
-          onSave={(input) => editPost(editingPost, input)}
-        />
-      ) : null}
       {selectedPost ? (
         <PostDialog
           post={posts.find((post) => post.id === selectedPost.id) ?? selectedPost}
@@ -416,6 +409,13 @@ export function App({ initialPostId }: { initialPostId?: string } = {}) {
           canManage={canManagePost(selectedPost)}
           onEdit={() => setEditingPost(posts.find((post) => post.id === selectedPost.id) ?? selectedPost)}
           onDelete={() => deletePost(posts.find((post) => post.id === selectedPost.id) ?? selectedPost)}
+        />
+      ) : null}
+      {editingPost ? (
+        <EditPostModal
+          post={editingPost}
+          onClose={() => setEditingPost(null)}
+          onSave={(input) => editPost(editingPost, input)}
         />
       ) : null}
       {toast ? <div className="toast">{toast}</div> : null}
