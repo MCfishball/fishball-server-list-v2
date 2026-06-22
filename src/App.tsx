@@ -821,8 +821,7 @@ function EditPostModal({
   const titleValid = title.trim().length >= 3;
   const contentValid = content.trim().length >= 10;
 
-  const submit = async (event: FormEvent) => {
-    event.preventDefault();
+  const save = async () => {
     if (!titleValid || !contentValid) return;
 
     setSubmitting(true);
@@ -833,6 +832,11 @@ function EditPostModal({
     setSubmitting(false);
 
     if (saved) onClose();
+  };
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    await save();
   };
 
   return (
@@ -878,7 +882,12 @@ function EditPostModal({
             <button type="button" className="secondary-button" onClick={onClose}>
               取消
             </button>
-            <button className="primary-button" disabled={submitting || !titleValid || !contentValid}>
+            <button
+              type="button"
+              className="primary-button"
+              disabled={submitting || !titleValid || !contentValid}
+              onClick={() => void save()}
+            >
               <Send size={16} /> {submitting ? "保存中…" : "保存修改"}
             </button>
           </div>
