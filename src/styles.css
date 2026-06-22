@@ -600,6 +600,56 @@ a {
   color: var(--amber);
 }
 
+.post-row-actions {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.post-row-actions button,
+.danger-button {
+  height: 30px;
+  padding: 0 9px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.02);
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.post-row-actions button:hover {
+  color: var(--green);
+  border-color: rgba(102, 209, 122, 0.45);
+}
+
+.post-row-actions button.danger,
+.danger-button {
+  color: #ffb4a6;
+  border-color: rgba(255, 122, 97, 0.35);
+  background: rgba(255, 122, 97, 0.08);
+}
+
+.post-row-actions button.danger:hover,
+.danger-button:hover {
+  color: #ffd8d1;
+  border-color: rgba(255, 122, 97, 0.6);
+}
+
+.edited-label {
+  padding: 3px 7px;
+  border-radius: 999px;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 9px;
+  font-weight: 800;
+}
+
 .metrics {
   display: flex;
   gap: 12px;
@@ -984,6 +1034,7 @@ footer a:hover {
   display: flex;
   gap: 8px;
   align-items: center;
+  flex-wrap: wrap;
 }
 
 .dialog-meta span:last-child {
@@ -1023,8 +1074,35 @@ footer a:hover {
 .dialog-actions {
   padding-bottom: 19px;
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   border-bottom: 1px solid var(--border-soft);
+}
+
+.deleted-post-state {
+  padding: 44px 16px 34px;
+  display: grid;
+  place-items: center;
+  gap: 12px;
+  text-align: center;
+  color: var(--muted);
+}
+
+.deleted-post-state svg {
+  color: #ffb4a6;
+}
+
+.deleted-post-state h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: 22px;
+}
+
+.deleted-post-state p {
+  max-width: 420px;
+  margin: 0;
+  line-height: 1.7;
+  font-size: 12px;
 }
 
 .comments {

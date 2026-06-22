@@ -4,6 +4,7 @@ import {
   CircleHelp,
   Clock3,
   Crown,
+  Edit3,
   FileText,
   Flame,
   Heart,
@@ -19,6 +20,7 @@ import {
   ShieldCheck,
   Sparkles,
   ThumbsUp,
+  Trash2,
   UserRound,
   UsersRound,
   X,
@@ -31,13 +33,16 @@ import {
   createPost as createDatabasePost,
   ForumPostingLimits,
   ForumComment,
+  getPost,
   getCurrentPostingLimits,
   highlightPost,
   listComments,
   listCurrentUserLikes,
   listPosts,
   setPostLike,
+  softDeletePost,
   subscribeToForumChanges,
+  updatePost as updateDatabasePost,
 } from "./lib/forum-api";
 import { getCurrentSession, onAuthSessionChange } from "./lib/supabase";
 
@@ -54,7 +59,7 @@ const categoryClass: Record<Post["category"], string> = {
   闲聊: "purple",
 };
 
-export function App() {
+export function App({ initialPostId }: { initialPostId?: string } = {}) {
   const [activeCategory, setActiveCategory] = useState<Category>("全部讨论");
   const [query, setQuery] = useState("");
   const [posts, setPosts] = useState<Post[]>([]);
@@ -62,6 +67,7 @@ export function App() {
   const [loadingPosts, setLoadingPosts] = useState(true);
   const [forumError, setForumError] = useState("");
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
+  const [editingPost, setEditingPost] = useState<Post | null>(null);
   const [composerOpen, setComposerOpen] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [toast, setToast] = useState("");
@@ -69,6 +75,7 @@ export function App() {
   const [authReady, setAuthReady] = useState(false);
   const [postingLimits, setPostingLimits] = useState<ForumPostingLimits | null>(null);
   const deferredQuery = useDeferredValue(query.trim().toLowerCase());
+  const isAdmin = postingLimits?.role === "admin";
 
   useEffect(() => {
     let active = true;
@@ -94,6 +101,23 @@ export function App() {
       unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    if (!initialPostId) return;
+
+    let active = true;
+    void getPost(initialPostId)
+      .then((post) => {
+        if (active) setSelectedPost(post);
+      })
+      .catch((error) => {
+        if (active) showToast(error instanceof Error ? error.message : "帖子加载失败");
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [initialPostId]);
 
   useEffect(() => {
     if (!session?.user.id) {
@@ -153,6 +177,33 @@ export function App() {
     window.setTimeout(() => setToast(""), 2400);
   };
 
+  const refreshForumData = async () => {
+    const [databasePosts, databaseLikes, nextPostingLimits] = await Promise.all([
+      listPosts(),
+      listCurrentUserLikes().catch(() => new Set<string>()),
+      getCurrentPostingLimits().catch(() => null),
+    ]);
+
+    setPosts(databasePosts);
+    setLiked(databaseLikes);
+    if (nextPostingLimits) setPostingLimits(nextPostingLimits);
+    return databasePosts;
+  };
+
+  const canManagePost = (post: Post) => Boolean(session?.user.id && (post.userId === session.user.id || isAdmin));
+
+  const openPost = (post: Post) => {
+    setSelectedPost(post);
+    window.history.replaceState(null, "", `/forum/posts/${post.id}`);
+  };
+
+  const closePost = () => {
+    setSelectedPost(null);
+    if (window.location.pathname.startsWith("/forum/posts/")) {
+      window.history.replaceState(null, "", "/forum");
+    }
+  };
+
   const toggleLike = async (postId: string) => {
     const willLike = !liked.has(postId);
     try {
@@ -184,6 +235,47 @@ export function App() {
     } catch (error) {
       showToast(error instanceof Error ? error.message : "发布失败");
       return false;
+    }
+  };
+
+  const editPost = async (post: Post, input: Pick<Post, "title" | "content">) => {
+    try {
+      const updatedPost = await updateDatabasePost(post.id, input);
+      const refreshedPosts = await refreshForumData();
+      const refreshedPost = refreshedPosts.find((item) => item.id === post.id) ?? {
+        ...post,
+        ...updatedPost,
+        title: input.title,
+        content: input.content,
+        edited: true,
+      };
+
+      setSelectedPost((current) => (current?.id === post.id ? refreshedPost : current));
+      setEditingPost(null);
+      showToast("修改成功");
+      return true;
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "修改帖子失败");
+      return false;
+    }
+  };
+
+  const deletePost = async (post: Post) => {
+    if (!window.confirm("确认删除这篇帖子吗？删除后不会恢复，并且仍然计入今日发帖次数。")) {
+      return;
+    }
+
+    try {
+      await softDeletePost(post.id);
+      await refreshForumData();
+      setSelectedPost(null);
+      setEditingPost(null);
+      if (window.location.pathname.startsWith("/forum/posts/")) {
+        window.history.replaceState(null, "", "/forum");
+      }
+      showToast("帖子已删除");
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "删除帖子失败");
     }
   };
 
@@ -272,8 +364,11 @@ export function App() {
                   key={post.id}
                   post={post}
                   isLiked={liked.has(post.id)}
+                  canManage={canManagePost(post)}
                   onLike={() => toggleLike(post.id)}
-                  onOpen={() => setSelectedPost(post)}
+                  onOpen={() => openPost(post)}
+                  onEdit={() => setEditingPost(post)}
+                  onDelete={() => deletePost(post)}
                 />
               ))
             ) : (
@@ -303,14 +398,24 @@ export function App() {
           postingLimits={postingLimits}
         />
       ) : null}
-      {selectedPost && posts.some((post) => post.id === selectedPost.id) ? (
+      {editingPost ? (
+        <EditPostModal
+          post={editingPost}
+          onClose={() => setEditingPost(null)}
+          onSave={(input) => editPost(editingPost, input)}
+        />
+      ) : null}
+      {selectedPost ? (
         <PostDialog
-          post={posts.find((post) => post.id === selectedPost.id)!}
+          post={posts.find((post) => post.id === selectedPost.id) ?? selectedPost}
           isLiked={liked.has(selectedPost.id)}
           onLike={() => toggleLike(selectedPost.id)}
-          onClose={() => setSelectedPost(null)}
+          onClose={closePost}
           onPromote={() => promotePost(selectedPost.id)}
           canInteract={Boolean(session)}
+          canManage={canManagePost(selectedPost)}
+          onEdit={() => setEditingPost(posts.find((post) => post.id === selectedPost.id) ?? selectedPost)}
+          onDelete={() => deletePost(posts.find((post) => post.id === selectedPost.id) ?? selectedPost)}
         />
       ) : null}
       {toast ? <div className="toast">{toast}</div> : null}
@@ -435,14 +540,42 @@ function Sidebar({
 function PostRow({
   post,
   isLiked,
+  canManage,
   onLike,
   onOpen,
+  onEdit,
+  onDelete,
 }: {
   post: Post;
   isLiked: boolean;
+  canManage: boolean;
   onLike: () => void;
   onOpen: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
 }) {
+  const actionButtons = canManage ? (
+    <span className="post-row-actions">
+      <button
+        onClick={(event) => {
+          event.stopPropagation();
+          onEdit();
+        }}
+      >
+        <Edit3 size={14} /> 编辑
+      </button>
+      <button
+        className="danger"
+        onClick={(event) => {
+          event.stopPropagation();
+          onDelete();
+        }}
+      >
+        <Trash2 size={14} /> 删除
+      </button>
+    </span>
+  ) : null;
+
   if (post.pinned) {
     return (
       <article className="pinned-post">
@@ -453,6 +586,8 @@ function PostRow({
         </button>
         <span className="pinned-author">{post.avatar} {post.author}</span>
         <PostMetrics post={post} isLiked={isLiked} onLike={onLike} />
+        {post.edited && <span className="edited-label">已编辑</span>}
+        {actionButtons}
         <span className="pin-label">置顶</span>
       </article>
     );
@@ -467,6 +602,7 @@ function PostRow({
           <span className="post-tags">
             <span className={categoryClass[post.category]}>{post.category}</span>
             <span>{post.tag}</span>
+            {post.edited && <span>已编辑</span>}
           </span>
         </span>
       </button>
@@ -475,6 +611,7 @@ function PostRow({
       </span>
       <span className="post-age">{post.age}</span>
       <PostMetrics post={post} isLiked={isLiked} onLike={onLike} />
+      {actionButtons}
     </article>
   );
 }
@@ -669,6 +806,88 @@ function Composer({
   );
 }
 
+function EditPostModal({
+  post,
+  onClose,
+  onSave,
+}: {
+  post: Post;
+  onClose: () => void;
+  onSave: (input: Pick<Post, "title" | "content">) => Promise<boolean>;
+}) {
+  const [title, setTitle] = useState(post.title);
+  const [content, setContent] = useState(post.content);
+  const [submitting, setSubmitting] = useState(false);
+  const titleValid = title.trim().length >= 3;
+  const contentValid = content.trim().length >= 10;
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!titleValid || !contentValid) return;
+
+    setSubmitting(true);
+    const saved = await onSave({
+      title: title.trim(),
+      content: content.trim(),
+    });
+    setSubmitting(false);
+
+    if (saved) onClose();
+  };
+
+  return (
+    <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
+      <form className="modal composer" onSubmit={submit} onMouseDown={(e) => e.stopPropagation()}>
+        <div className="modal-heading">
+          <div>
+            <h2>编辑帖子</h2>
+            <p>只能修改标题和正文，已删除帖子不能再编辑。</p>
+          </div>
+          <button type="button" className="icon-button" onClick={onClose} aria-label="关闭">
+            <X size={19} />
+          </button>
+        </div>
+
+        <label>
+          标题
+          <input
+            autoFocus
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="标题至少 3 个字"
+            maxLength={160}
+          />
+        </label>
+        {!titleValid ? <p className="form-status limit-warning">标题至少 3 个字。</p> : null}
+
+        <label>
+          正文
+          <textarea
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
+            placeholder="内容至少 10 个字"
+            rows={7}
+            maxLength={20000}
+          />
+        </label>
+        {!contentValid ? <p className="form-status limit-warning">内容至少 10 个字。</p> : null}
+
+        <div className="modal-footer">
+          <span>{content.length} / 20000</span>
+          <div>
+            <button type="button" className="secondary-button" onClick={onClose}>
+              取消
+            </button>
+            <button className="primary-button" disabled={submitting || !titleValid || !contentValid}>
+              <Send size={16} /> {submitting ? "保存中…" : "保存修改"}
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 function PostDialog({
   post,
   isLiked,
@@ -676,6 +895,9 @@ function PostDialog({
   onClose,
   onPromote,
   canInteract,
+  canManage,
+  onEdit,
+  onDelete,
 }: {
   post: Post;
   isLiked: boolean;
@@ -683,6 +905,9 @@ function PostDialog({
   onClose: () => void;
   onPromote: () => void;
   canInteract: boolean;
+  canManage: boolean;
+  onEdit: () => void;
+  onDelete: () => void;
 }) {
   const [comments, setComments] = useState<ForumComment[]>([]);
   const [comment, setComment] = useState("");
@@ -714,11 +939,20 @@ function PostDialog({
           <div className="dialog-meta">
             <span className={categoryClass[post.category]}>{post.category}</span>
             <span>{post.age}</span>
+            {post.edited && !post.isDeleted ? <span>已编辑</span> : null}
           </div>
           <button className="icon-button" onClick={onClose} aria-label="关闭">
             <X size={19} />
           </button>
         </div>
+        {post.isDeleted ? (
+          <div className="deleted-post-state">
+            <Trash2 size={28} />
+            <h2>该帖子已被作者删除</h2>
+            <p>删除不会恢复发帖额度，这篇帖子仍然计入作者今日发帖次数。</p>
+          </div>
+        ) : (
+          <>
         <h2>{post.title}</h2>
         <div className="dialog-author">
           <span className="post-avatar">{post.avatar}</span>
@@ -739,6 +973,16 @@ function PostDialog({
           <button className="vip-button" onClick={onPromote}>
             <Sparkles size={16} /> VIP 高亮
           </button>
+          {canManage ? (
+            <>
+              <button className="secondary-button" onClick={onEdit}>
+                <Edit3 size={16} /> 编辑
+              </button>
+              <button className="danger-button" onClick={onDelete}>
+                <Trash2 size={16} /> 删除
+              </button>
+            </>
+          ) : null}
         </div>
         <div className="comments">
           <h3>评论 {comments.length}</h3>
@@ -766,6 +1010,8 @@ function PostDialog({
           </form>
           {commentStatus ? <p className="form-status">{commentStatus}</p> : null}
         </div>
+          </>
+        )}
       </article>
     </div>
   );

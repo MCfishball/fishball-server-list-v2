@@ -5,6 +5,10 @@ import { SubmitServerPage } from "./pages/SubmitServerPage";
 export function Router() {
   const path = window.location.pathname.replace(/\/+$/, "") || "/";
 
+  if (path.startsWith("/forum/posts/")) {
+    return <App initialPostId={decodeURIComponent(path.replace("/forum/posts/", ""))} />;
+  }
+
   if (path === "/forum") return <App />;
   if (path === "/feedback") return <FeedbackPage />;
   if (path === "/submit-server") return <SubmitServerPage />;
@@ -13,4 +17,3 @@ export function Router() {
   // fallback remains the existing V1 router/application.
   return <App />;
 }
-

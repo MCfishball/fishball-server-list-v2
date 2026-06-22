@@ -9,7 +9,12 @@ type DatabasePost = {
   category: "servers_discussion" | "help" | "general_chat";
   is_pinned: boolean;
   is_highlighted: boolean;
+  is_deleted?: boolean;
   created_at: string;
+  updated_at?: string;
+  edited_at?: string | null;
+  deleted_at?: string | null;
+  deleted_by?: string | null;
 };
 
 type DatabaseComment = {
@@ -47,6 +52,7 @@ function databaseAuthor(userId: string) {
 function toPost(row: DatabasePost, comments: number, likes: number, author?: string): Post {
   return {
     id: row.id,
+    userId: row.user_id,
     title: row.title,
     content: row.content,
     category: categoryFromDb[row.category],
@@ -63,6 +69,9 @@ function toPost(row: DatabasePost, comments: number, likes: number, author?: str
     avatar: "🧑",
     pinned: row.is_pinned,
     highlighted: row.is_highlighted,
+    edited: Boolean(row.edited_at),
+    isDeleted: Boolean(row.is_deleted),
+    deletedAt: row.deleted_at ?? null,
   };
 }
 
@@ -138,6 +147,7 @@ export async function listPosts(): Promise<Post[]> {
   const { data: postRows, error } = await supabase
     .from("posts")
     .select("*")
+    .eq("is_deleted", false)
     .order("is_pinned", { ascending: false })
     .order("created_at", { ascending: false })
     .limit(50);
@@ -186,6 +196,37 @@ export async function listPosts(): Promise<Post[]> {
   );
 }
 
+export async function getPost(postId: string): Promise<Post> {
+  if (!supabase) throw new Error("Supabase 尚未配置，帖子无法加载");
+
+  const { data: postRow, error } = await supabase
+    .from("posts")
+    .select("*")
+    .eq("id", postId)
+    .maybeSingle();
+
+  if (error) throw new Error("帖子加载失败");
+  if (!postRow) throw new Error("帖子不存在");
+
+  const post = postRow as DatabasePost;
+  const [
+    { data: commentRows, error: commentError },
+    { data: likeRows, error: likeError },
+    { data: profileRows, error: profileError },
+  ] = await Promise.all([
+    supabase.from("comments").select("post_id").eq("post_id", post.id),
+    supabase.from("post_likes").select("post_id").eq("post_id", post.id),
+    supabase.from("profiles").select("user_id,nickname").eq("user_id", post.user_id),
+  ]);
+
+  if (commentError) throw new Error("评论数量加载失败");
+  if (likeError) throw new Error("点赞数量加载失败");
+  if (profileError) throw new Error("作者资料加载失败");
+
+  const author = (profileRows ?? [])[0]?.nickname as string | null | undefined;
+  return toPost(post, commentRows?.length ?? 0, likeRows?.length ?? 0, author ?? undefined);
+}
+
 export async function createPost(input: Pick<Post, "title" | "content" | "category">) {
   if (!supabase) throw new Error("Supabase 尚未配置");
   const userId = await requireUserId();
@@ -214,6 +255,67 @@ export async function createPost(input: Pick<Post, "title" | "content" | "catego
 
   if (error) throw new Error(normalizePostCreateError(error.message));
   return toPost(data as DatabasePost, 0, 0);
+}
+
+async function getAccessToken() {
+  if (!supabase) throw new Error("Supabase 尚未配置");
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  if (!session?.access_token) {
+    throw new Error("请先登录");
+  }
+
+  return session.access_token;
+}
+
+function cleanForumApiError(error: unknown, fallback: string) {
+  if (error instanceof Error && error.message) return error.message;
+  return fallback;
+}
+
+export async function updatePost(
+  postId: string,
+  input: Pick<Post, "title" | "content">,
+): Promise<Post> {
+  const token = await getAccessToken();
+  const response = await fetch(`/api/forum/posts/${encodeURIComponent(postId)}`, {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(input),
+  });
+
+  const data = (await response.json().catch(() => ({}))) as {
+    error?: string;
+    post?: DatabasePost;
+  };
+
+  if (!response.ok || !data.post) {
+    throw new Error(data.error ?? "修改帖子失败");
+  }
+
+  return toPost(data.post, 0, 0);
+}
+
+export async function softDeletePost(postId: string) {
+  const token = await getAccessToken();
+  const response = await fetch(`/api/forum/posts/${encodeURIComponent(postId)}`, {
+    method: "DELETE",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  const data = (await response.json().catch(() => ({}))) as { error?: string; message?: string };
+  if (!response.ok) {
+    throw new Error(cleanForumApiError(data.error, "删除帖子失败"));
+  }
+
+  return data.message ?? "帖子已删除";
 }
 
 export async function setPostLike(postId: string, liked: boolean) {
