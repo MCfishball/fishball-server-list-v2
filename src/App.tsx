@@ -886,6 +886,11 @@ function EditPostModal({
               type="button"
               className="primary-button"
               disabled={submitting || !titleValid || !contentValid}
+              onMouseDown={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                void save();
+              }}
               onClick={() => void save()}
             >
               <Send size={16} /> {submitting ? "保存中…" : "保存修改"}
