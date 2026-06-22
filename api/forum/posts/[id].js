@@ -24,7 +24,11 @@ function setCorsHeaders(response) {
 function getPostId(request) {
   const raw = request.query?.id;
   if (Array.isArray(raw)) return raw[0];
-  return raw;
+  if (raw) return raw;
+
+  const path = request.url?.split("?")[0] ?? "";
+  const match = path.match(/\/api\/forum\/posts\/([^/]+)$/);
+  return match?.[1] ? decodeURIComponent(match[1]) : undefined;
 }
 
 function getAuthorization(request) {
