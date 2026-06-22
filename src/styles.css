@@ -596,7 +596,9 @@ a {
   white-space: nowrap;
 }
 
-.post-author.official {
+.post-author.official,
+.pinned-author.official,
+.official-name {
   color: var(--amber);
 }
 

@@ -63,6 +63,8 @@ const categoryClass: Record<Post["category"], string> = {
   闲聊: "purple",
 };
 
+const officialForumEmails = new Set(["jiangyuze852@gmail.com"]);
+
 export function App({ initialPostId }: { initialPostId?: string } = {}) {
   const [activeCategory, setActiveCategory] = useState<Category>("全部讨论");
   const [query, setQuery] = useState("");
@@ -499,7 +501,11 @@ function Header({
   session: Session | null;
   authReady: boolean;
 }) {
-  const accountName = session?.user.email?.split("@")[0] ?? "社区账户";
+  const isOfficialAccount = Boolean(
+    session?.user.email && officialForumEmails.has(session.user.email.toLowerCase()),
+  );
+  const baseAccountName = session?.user.email?.split("@")[0] ?? "社区账户";
+  const accountName = isOfficialAccount ? `${baseAccountName} 官方` : baseAccountName;
 
   return (
     <header className="header">
@@ -663,7 +669,7 @@ function PostRow({
           <span className="vip-label">VIP</span>
           {post.title}
         </button>
-        <span className="pinned-author">{post.avatar} {post.author}</span>
+        <span className={`pinned-author ${post.official ? "official" : ""}`}>{post.avatar} {post.author}</span>
         <PostMetrics post={post} isLiked={isLiked} onLike={onLike} />
         {post.edited && <span className="edited-label">已编辑</span>}
         {actionButtons}
@@ -1156,7 +1162,7 @@ function PostDialog({
         <div className="dialog-author">
           <span className="post-avatar">{post.avatar}</span>
           <div>
-            <strong>{post.author}</strong>
+            <strong className={post.official ? "official-name" : ""}>{post.author}</strong>
           </div>
         </div>
         <p className="dialog-content">{post.content}</p>
@@ -1192,7 +1198,7 @@ function PostDialog({
             <div className="comment" key={`${item.author}-${index}`}>
               <span className="comment-avatar"><UserRound size={17} /></span>
               <div>
-                <strong>{item.author}</strong>
+                <strong className={item.official ? "official-name" : ""}>{item.author}</strong>
                 <p>{item.body}</p>
                 <span>{item.age}</span>
               </div>

@@ -24,6 +24,11 @@ type DatabaseComment = {
   created_at: string;
 };
 
+type ForumOfficialUser = {
+  user_id: string;
+  label: string | null;
+};
+
 export type ForumPostingLimits = {
   role: "user" | "vip" | "admin";
   dailyLimit: number | null;
@@ -68,7 +73,20 @@ function databaseAuthor(userId: string) {
   return `玩家${userId.replaceAll("-", "").slice(0, 4)}`;
 }
 
-function toPost(row: DatabasePost, comments: number, likes: number, author?: string): Post {
+function formatForumAuthor(baseAuthor: string, officialLabel?: string | null) {
+  if (!officialLabel) return baseAuthor;
+  if (baseAuthor.includes(officialLabel)) return baseAuthor;
+  return `${baseAuthor} ${officialLabel}`;
+}
+
+function toPost(
+  row: DatabasePost,
+  comments: number,
+  likes: number,
+  author?: string,
+  officialLabel?: string | null,
+): Post {
+  const baseAuthor = author || databaseAuthor(row.user_id);
   return {
     id: row.id,
     userId: row.user_id,
@@ -76,7 +94,7 @@ function toPost(row: DatabasePost, comments: number, likes: number, author?: str
     content: row.content,
     category: categoryFromDb[row.category],
     tag: "社区",
-    author: author || databaseAuthor(row.user_id),
+    author: formatForumAuthor(baseAuthor, officialLabel),
     age: new Intl.DateTimeFormat("zh-CN", {
       month: "numeric",
       day: "numeric",
@@ -89,6 +107,7 @@ function toPost(row: DatabasePost, comments: number, likes: number, author?: str
     pinned: row.is_pinned,
     highlighted: row.is_highlighted,
     edited: Boolean(row.edited_at),
+    official: Boolean(officialLabel),
     isDeleted: Boolean(row.is_deleted),
     deletedAt: row.deleted_at ?? null,
   };
@@ -176,27 +195,37 @@ export async function listPosts(): Promise<Post[]> {
   if (!posts.length) return [];
 
   const postIds = posts.map((post) => post.id);
+  const authorIds = [...new Set(posts.map((post) => post.user_id))];
   const [
     { data: commentRows, error: commentError },
     { data: likeRows, error: likeError },
     { data: profileRows, error: profileError },
+    { data: officialRows, error: officialError },
   ] = await Promise.all([
       supabase.from("comments").select("post_id").in("post_id", postIds),
       supabase.from("post_likes").select("post_id").in("post_id", postIds),
       supabase
         .from("profiles")
         .select("user_id,nickname")
-        .in("user_id", [...new Set(posts.map((post) => post.user_id))]),
+        .in("user_id", authorIds),
+      supabase
+        .from("forum_official_users")
+        .select("user_id,label")
+        .in("user_id", authorIds),
     ]);
 
   if (commentError) throw commentError;
   if (likeError) throw likeError;
   if (profileError) throw profileError;
+  if (officialError && officialError.code !== "42P01") throw officialError;
 
   const commentCounts = new Map<string, number>();
   const likeCounts = new Map<string, number>();
   const authors = new Map(
     (profileRows ?? []).map((profile) => [profile.user_id, profile.nickname as string | null]),
+  );
+  const officialLabels = new Map(
+    ((officialRows ?? []) as ForumOfficialUser[]).map((row) => [row.user_id, row.label || "官方"]),
   );
   for (const row of commentRows ?? []) {
     commentCounts.set(row.post_id, (commentCounts.get(row.post_id) ?? 0) + 1);
@@ -211,6 +240,7 @@ export async function listPosts(): Promise<Post[]> {
       commentCounts.get(post.id) ?? 0,
       likeCounts.get(post.id) ?? 0,
       authors.get(post.user_id) ?? undefined,
+      officialLabels.get(post.user_id),
     ),
   );
 }
@@ -232,18 +262,22 @@ export async function getPost(postId: string): Promise<Post> {
     { data: commentRows, error: commentError },
     { data: likeRows, error: likeError },
     { data: profileRows, error: profileError },
+    { data: officialRows, error: officialError },
   ] = await Promise.all([
     supabase.from("comments").select("post_id").eq("post_id", post.id),
     supabase.from("post_likes").select("post_id").eq("post_id", post.id),
     supabase.from("profiles").select("user_id,nickname").eq("user_id", post.user_id),
+    supabase.from("forum_official_users").select("user_id,label").eq("user_id", post.user_id),
   ]);
 
   if (commentError) throw new Error("评论数量加载失败");
   if (likeError) throw new Error("点赞数量加载失败");
   if (profileError) throw new Error("作者资料加载失败");
+  if (officialError && officialError.code !== "42P01") throw new Error("官方标识加载失败");
 
   const author = (profileRows ?? [])[0]?.nickname as string | null | undefined;
-  return toPost(post, commentRows?.length ?? 0, likeRows?.length ?? 0, author ?? undefined);
+  const officialLabel = ((officialRows ?? []) as ForumOfficialUser[])[0]?.label ?? null;
+  return toPost(post, commentRows?.length ?? 0, likeRows?.length ?? 0, author ?? undefined, officialLabel);
 }
 
 export async function createPost(input: Pick<Post, "title" | "content" | "category">) {
@@ -456,6 +490,7 @@ export type ForumComment = {
   author: string;
   body: string;
   age: string;
+  official?: boolean;
 };
 
 export async function listComments(postId: string): Promise<ForumComment[]> {
@@ -469,18 +504,36 @@ export async function listComments(postId: string): Promise<ForumComment[]> {
   if (error) throw error;
   const comments = data as DatabaseComment[];
   if (!comments.length) return [];
-  const { data: profileRows, error: profileError } = await supabase
-    .from("profiles")
-    .select("user_id,nickname")
-    .in("user_id", [...new Set(comments.map((comment) => comment.user_id))]);
+  const commenterIds = [...new Set(comments.map((comment) => comment.user_id))];
+  const [
+    { data: profileRows, error: profileError },
+    { data: officialRows, error: officialError },
+  ] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("user_id,nickname")
+      .in("user_id", commenterIds),
+    supabase
+      .from("forum_official_users")
+      .select("user_id,label")
+      .in("user_id", commenterIds),
+  ]);
   if (profileError) throw profileError;
+  if (officialError && officialError.code !== "42P01") throw officialError;
   const authors = new Map(
     (profileRows ?? []).map((profile) => [profile.user_id, profile.nickname as string | null]),
+  );
+  const officialLabels = new Map(
+    ((officialRows ?? []) as ForumOfficialUser[]).map((row) => [row.user_id, row.label || "官方"]),
   );
 
   return comments.map((row) => ({
     id: row.id,
-    author: authors.get(row.user_id) || databaseAuthor(row.user_id),
+    author: formatForumAuthor(
+      authors.get(row.user_id) || databaseAuthor(row.user_id),
+      officialLabels.get(row.user_id),
+    ),
+    official: officialLabels.has(row.user_id),
     body: row.content,
     age: new Intl.DateTimeFormat("zh-CN", {
       month: "numeric",
