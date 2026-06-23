@@ -669,7 +669,13 @@ function PostRow({
           <span className="vip-label">VIP</span>
           {post.title}
         </button>
-        <span className={`pinned-author ${post.official ? "official" : ""}`}>{post.avatar} {post.author}</span>
+        <a
+          className={`pinned-author author-profile-link ${post.official ? "official" : ""}`}
+          href={post.authorUrl ?? `/users/${encodeURIComponent(post.userId)}`}
+          title="查看用户主页"
+        >
+          {post.avatar} {post.author}
+        </a>
         <PostMetrics post={post} isLiked={isLiked} onLike={onLike} />
         {post.edited && <span className="edited-label">已编辑</span>}
         {actionButtons}
@@ -691,9 +697,13 @@ function PostRow({
           </span>
         </span>
       </button>
-      <span className={`post-author ${post.official ? "official" : ""}`}>
+      <a
+        className={`post-author author-profile-link ${post.official ? "official" : ""}`}
+        href={post.authorUrl ?? `/users/${encodeURIComponent(post.userId)}`}
+        title="查看用户主页"
+      >
         {post.author}
-      </span>
+      </a>
       <span className="post-age">{post.age}</span>
       <PostMetrics post={post} isLiked={isLiked} onLike={onLike} />
       {actionButtons}
@@ -1162,7 +1172,13 @@ function PostDialog({
         <div className="dialog-author">
           <span className="post-avatar">{post.avatar}</span>
           <div>
-            <strong className={post.official ? "official-name" : ""}>{post.author}</strong>
+            <a
+              className={`dialog-author-link ${post.official ? "official-name" : ""}`}
+              href={post.authorUrl ?? `/users/${encodeURIComponent(post.userId)}`}
+              title="查看用户主页"
+            >
+              {post.author}
+            </a>
           </div>
         </div>
         <p className="dialog-content">{post.content}</p>

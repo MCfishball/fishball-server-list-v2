@@ -5,6 +5,7 @@ export type Post = {
   userId: string;
   title: string;
   author: string;
+  authorUrl?: string;
   category: Exclude<Category, "全部讨论">;
   tag: string;
   age: string;

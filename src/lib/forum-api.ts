@@ -95,6 +95,7 @@ function toPost(
     category: categoryFromDb[row.category],
     tag: "社区",
     author: formatForumAuthor(baseAuthor, officialLabel),
+    authorUrl: `/users/${encodeURIComponent(row.user_id)}`,
     age: new Intl.DateTimeFormat("zh-CN", {
       month: "numeric",
       day: "numeric",

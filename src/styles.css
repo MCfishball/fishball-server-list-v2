@@ -596,6 +596,20 @@ a {
   white-space: nowrap;
 }
 
+
+.author-profile-link,
+.dialog-author-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.author-profile-link:hover,
+.dialog-author-link:hover {
+  color: var(--green);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .post-author.official,
 .pinned-author.official,
 .official-name {

@@ -84,5 +84,10 @@ assert.match(app, /该帖子已被作者删除/);
 assert.match(app, /已编辑/);
 assert.match(app, /编辑帖子/);
 assert.match(app, /保存修改/);
+assert.match(data, /authorUrl\?: string/);
+assert.match(api, /authorUrl: `\/users\/\$\{encodeURIComponent\(row\.user_id\)\}`/);
+assert.match(app, /author-profile-link/);
+assert.match(app, /dialog-author-link/);
+assert.match(app, /查看用户主页/);
 
 console.log("Forum regression checks passed");
